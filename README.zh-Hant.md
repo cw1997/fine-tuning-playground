@@ -124,6 +124,8 @@ python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 fine-tuning-playground/
 ├── requirements.txt      # Python 套件依賴列表
 ├── config.py             # FinetuneConfig 資料類別，包含所有超參數
+├── data/                 # 訓練資料集與產生器
+├── models/               # 微調後的 LoRA 適配器（已加入 .gitignore）
 ├── data_utils.py         # 資料集載入（Hub 與本機）+ ChatML 格式化
 ├── model_utils.py        # 分詞器載入、4-bit 量化、LoRA 設定
 ├── train.py              # SFTTrainer 訓練流程
@@ -172,7 +174,7 @@ fine-tuning-playground/
 | | `warmup_ratio` | `0.03` | 線性 warmup 比例 |
 | | `logging_steps` | `10` | 每隔 N 步記錄一次指標 |
 | | `save_steps` | `200` | 每隔 N 步儲存一次檢查點 |
-| | `output_dir` | `./qwen3-4b-finetuned` | 輸出目錄 |
+| | `output_dir` | `./models/qwen3-4b-finetuned` | 輸出目錄 |
 | **Hub** | `push_to_hub` | `False` | 將適配器推送至 HF Hub |
 | | `hub_model_id` | `""` | Hub 上的目標儲存庫名稱 |
 | **推論** | `max_new_tokens` | `2048` | 最大生成 token 數 |

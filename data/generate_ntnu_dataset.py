@@ -8,7 +8,12 @@ Output: data/ntnu_dataset.jsonl
 """
 
 import json
+import sys
+from pathlib import Path
 from typing import List, Dict
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ntnu_extended_records import get_extended_records
 
 
 def make_record(messages: List[Dict[str, str]]) -> Dict:
@@ -278,6 +283,7 @@ def generate_dataset() -> List[Dict]:
         {"role": "assistant", "content": "TOCFL（Test of Chinese as a Foreign Language）華語文能力測驗，是臺灣官方認證的華語能力測驗系統，相當於英語的TOEFL或IELTS。TOCFL由國立臺灣師範大學研發與主辦，是師大對國際華語教育的重要貢獻之一。\n\nTOCFL的特色包括：\n\n1. **分級標準**：參照CEFR（歐洲共同語言參考架構），分為六個等級：A1（入門級）、A2（基礎級）、B1（進階級）、B2（高階級）、C1（流利級）、C2（精通級）。\n\n2. **測驗項目**：包括聽力測驗、閱讀測驗、口語測驗與寫作測驗。\n\n3. **國際認可**：TOCFL成績被全球多所大學和企業採認，作為華語能力證明。\n\n4. **用途廣泛**：外國學生申請臺灣大學、申請獎學金、求職等均可使用TOCFL成績。\n\n5. **數位化**：近年推動電腦化測驗，全球有多個考點。\n\nTOCFL與師大的國語教學中心（MTC）密切配合，MTC學生在課程結束後常參加TOCFL考試以驗證學習成果。"}
     ]))
 
+    records.extend(get_extended_records())
     return records
 
 

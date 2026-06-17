@@ -76,7 +76,7 @@ def parse_args(argv=None) -> FinetuneConfig:
     parser.add_argument("--save_steps", type=int, default=None,
                         help="Save checkpoint every N steps (default: 200)")
     parser.add_argument("--output_dir", type=str, default=None,
-                        help="Output directory for adapter (default: ./qwen3-4b-finetuned)")
+                        help="Output directory for adapter (default: ./models/qwen3-4b-finetuned)")
 
     # --- Hub ---
     parser.add_argument("--push_to_hub", type=lambda x: x.lower() == "true", default=None,

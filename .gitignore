@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Fine-tuned model outputs (LoRA adapters, checkpoints, tokenizers)
+models/

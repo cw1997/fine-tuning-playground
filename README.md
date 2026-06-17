@@ -159,13 +159,13 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. Run training with the bundled NTNU dataset (ChatML JSONL)
-python run_sft.py --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./ntnu-finetun
+python run_sft.py --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
 python inference.py --mode base --prompt "Tell me about National Taiwan Normal University."
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python inference.py --mode finetuned --adapter_path ./ntnu-finetuned --prompt "Tell me about National Taiwan Normal University."
+python inference.py --mode finetuned --adapter_path ./models/ntnu-finetuned --prompt "Tell me about National Taiwan Normal University."
 ```
 
 See the [Usage](#usage) section for detailed training options and dataset formats.
@@ -178,6 +178,8 @@ See the [Usage](#usage) section for detailed training options and dataset format
 fine-tuning-playground/
 ├── requirements.txt      # Python package dependencies
 ├── config.py             # FinetuneConfig dataclass with all hyperparameters
+├── data/                 # Training datasets and generators
+├── models/               # Fine-tuned LoRA adapters (gitignored)
 ├── data_utils.py         # Dataset loading (hub & local) + ChatML formatting
 ├── model_utils.py        # Tokenizer loading, 4-bit quantization, LoRA setup
 ├── train.py              # SFTTrainer training pipeline
@@ -226,7 +228,7 @@ All hyperparameters are defined in `FinetuneConfig` (`config.py`). Below is a co
 | | `warmup_ratio` | `0.03` | Linear warmup fraction |
 | | `logging_steps` | `10` | Log metrics every N steps |
 | | `save_steps` | `200` | Save checkpoint every N steps |
-| | `output_dir` | `./qwen3-4b-finetuned` | Output directory |
+| | `output_dir` | `./models/qwen3-4b-finetuned` | Output directory |
 | **Hub** | `push_to_hub` | `False` | Push adapter to HF Hub |
 | | `hub_model_id` | `""` | Target repository on Hub |
 | **Inference** | `max_new_tokens` | `2048` | Max generation tokens |

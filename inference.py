@@ -338,10 +338,10 @@ def main() -> None:
         python inference.py --mode base
 
         # Test the fine-tuned model
-        python inference.py --mode finetuned --adapter_path ./ntnu-finetuned
+        python inference.py --mode finetuned --adapter_path ./models/ntnu-finetuned
 
         # Compare base vs. fine-tuned
-        python inference.py --mode compare --adapter_path ./ntnu-finetuned
+        python inference.py --mode compare --adapter_path ./models/ntnu-finetuned
     """
     import argparse
 

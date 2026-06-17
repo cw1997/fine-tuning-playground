@@ -67,7 +67,7 @@ class FinetuneConfig:
     warmup_ratio: float = 0.03
     logging_steps: int = 10
     save_steps: int = 200
-    output_dir: str = "./qwen3-4b-finetuned"
+    output_dir: str = "./models/qwen3-4b-finetuned"
 
     # --- Hub settings ---
     push_to_hub: bool = False
