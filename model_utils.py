@@ -11,9 +11,9 @@ from typing import List, Optional, Tuple, Union
 import torch
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
+    AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    Qwen3ForCausalLM,
     PreTrainedModel,
     PreTrainedTokenizer,
 )
@@ -21,32 +21,51 @@ from transformers import (
 DeviceMap = Union[str, dict]
 
 
-def resolve_compute_device() -> Tuple[torch.device, DeviceMap, bool]:
+def resolve_compute_device(device: Optional[str] = None) -> Tuple[torch.device, DeviceMap, bool]:
     """
     Detect available hardware and pick the compute device.
+
+    Args:
+        device: Device preference ("gpu", "cpu", or None for auto).
+                Auto prefers GPU when CUDA is available.
 
     Returns:
         Tuple of (torch.device, device_map, use_cuda).
     """
+    if device == "cpu":
+        return torch.device("cpu"), {"": "cpu"}, False
+
+    if device == "gpu":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "GPU was requested via --device gpu but CUDA is not available. "
+                "Install a CUDA-enabled PyTorch wheel or use --device cpu."
+            )
+        return torch.device("cuda:0"), {"": 0}, True
+
+    # Auto: prefer GPU when available
     if torch.cuda.is_available():
-        # Force the base model onto the first CUDA device when available.
-        # This avoids "auto" placing layers on CPU unexpectedly.
         return torch.device("cuda:0"), {"": 0}, True
     return torch.device("cpu"), {"": "cpu"}, False
 
 
-def print_compute_device() -> Tuple[torch.device, DeviceMap, bool]:
+def print_compute_device(device: Optional[str] = None) -> Tuple[torch.device, DeviceMap, bool]:
     """
     Print the selected compute device and return device metadata.
+
+    Args:
+        device: Device preference ("gpu", "cpu", or None for auto).
 
     Returns:
         Tuple of (torch.device, device_map, use_cuda).
     """
-    device, device_map, use_cuda = resolve_compute_device()
+    device_obj, device_map, use_cuda = resolve_compute_device(device)
     if use_cuda:
         gpu_name = torch.cuda.get_device_name(0)
         gpu_count = torch.cuda.device_count()
         print(f"Using device: cuda:0 ({gpu_name}), {gpu_count} GPU(s) available")
+    elif device == "cpu":
+        print("Using device: cpu (--device cpu specified)")
     else:
         print("Using device: cpu (CUDA unavailable in current PyTorch runtime)")
         if torch.version.cuda is None or not torch.backends.cuda.is_built():
@@ -61,19 +80,21 @@ def print_compute_device() -> Tuple[torch.device, DeviceMap, bool]:
             )
         else:
             print("  Hint: no CUDA-capable GPU driver was detected on this machine.")
-    return device, device_map, use_cuda
+    return device_obj, device_map, use_cuda
 
 
 def adapt_settings_for_device(
     use_4bit: bool,
     torch_dtype: str,
+    device: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Adjust quantization and dtype when only CPU is available.
 
     4-bit quantization via bitsandbytes requires CUDA; CPU falls back to float32.
     """
-    if torch.cuda.is_available():
+    _, _, use_cuda = resolve_compute_device(device)
+    if use_cuda:
         return use_4bit, torch_dtype
 
     if use_4bit:
@@ -105,20 +126,22 @@ def load_quantized_model(
     model_id: str,
     torch_dtype: str = "bfloat16",
     use_4bit: bool = True,
-) -> Qwen3ForCausalLM:
+    device: Optional[str] = None,
+) -> PreTrainedModel:
     """
-    Load a Qwen3 model with optional 4-bit quantization (QLoRA).
+    Load a Qwen model with optional 4-bit quantization (QLoRA).
 
     Args:
         model_id:   Hugging Face model identifier.
         torch_dtype: Computation dtype ("bfloat16", "float16", or "float32").
         use_4bit:   Enable 4-bit NF4 quantization via bitsandbytes.
+        device:     Device preference ("gpu", "cpu", or None for auto).
 
     Returns:
-        A Qwen3ForCausalLM model, loaded in the specified precision.
+        A causal LM model (e.g. Qwen3 or Qwen3.5), loaded in the specified precision.
     """
-    _, device_map, _ = resolve_compute_device()
-    use_4bit, torch_dtype = adapt_settings_for_device(use_4bit, torch_dtype)
+    _, device_map, _ = resolve_compute_device(device)
+    use_4bit, torch_dtype = adapt_settings_for_device(use_4bit, torch_dtype, device)
 
     dtype_map = {
         "bfloat16": torch.bfloat16,
@@ -136,7 +159,7 @@ def load_quantized_model(
             bnb_4bit_quant_type="nf4",
         )
 
-    model = Qwen3ForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=quantization_config,
         torch_dtype=compute_dtype,

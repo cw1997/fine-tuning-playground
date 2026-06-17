@@ -40,10 +40,11 @@ class FinetuneConfig:
         temperature: Sampling temperature for generation.
         top_p: Nucleus sampling probability threshold.
         use_thinking: Enable Qwen3 thinking mode in chat template.
+        device: Compute device preference ("gpu", "cpu", or None for auto).
     """
 
     # --- Model settings ---
-    model_id: str = "Qwen/Qwen3-4B"
+    model_id: str = "Qwen/Qwen3.5-0.8B" # use "Qwen/Qwen3.5-4B" on GPU, "Qwen/Qwen3.5-0.8B" on CPU
     load_in_4bit: bool = True
     torch_dtype: str = "bfloat16"
 
@@ -78,6 +79,9 @@ class FinetuneConfig:
     temperature: float = 0.7
     top_p: float = 0.9
     use_thinking: bool = False
+
+    # --- Hardware settings ---
+    device: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Set default target modules if none provided."""

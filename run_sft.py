@@ -59,6 +59,15 @@ def parse_args(argv=None) -> FinetuneConfig:
     parser.add_argument("--max_seq_length", type=int, default=None,
                         help="Maximum sequence length (default: 4096)")
 
+    # --- Hardware ---
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        choices=["gpu", "cpu"],
+        help="Compute device: gpu or cpu (default: gpu if available, else cpu)",
+    )
+
     # --- Training ---
     parser.add_argument("--lr", "--learning_rate", dest="learning_rate", type=float, default=None,
                         help="Peak learning rate (default: 2e-4)")

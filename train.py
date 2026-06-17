@@ -29,9 +29,9 @@ from model_utils import (
 )
 
 
-def _resolve_training_precision(torch_dtype: str) -> Tuple[bool, bool]:
+def _resolve_training_precision(torch_dtype: str, use_cuda: bool) -> Tuple[bool, bool]:
     """Pick bf16/fp16 flags based on requested dtype and hardware support."""
-    if torch_dtype == "float32" or not torch.cuda.is_available():
+    if torch_dtype == "float32" or not use_cuda:
         return False, False
     if torch_dtype == "float16":
         return False, True
@@ -103,16 +103,18 @@ def train(cfg: FinetuneConfig) -> None:
         cfg: Configuration object with all hyperparameters.
     """
     print("=" * 60)
-    print_compute_device()
+    _, _, use_cuda = print_compute_device(cfg.device)
     cfg.load_in_4bit, cfg.torch_dtype = adapt_settings_for_device(
-        cfg.load_in_4bit, cfg.torch_dtype
+        cfg.load_in_4bit, cfg.torch_dtype, cfg.device
     )
 
     print("Step 1/6: Loading tokenizer...")
     tokenizer = load_tokenizer(cfg.model_id)
 
     print("Step 2/6: Loading quantized base model...")
-    model = load_quantized_model(cfg.model_id, cfg.torch_dtype, cfg.load_in_4bit)
+    model = load_quantized_model(
+        cfg.model_id, cfg.torch_dtype, cfg.load_in_4bit, device=cfg.device
+    )
 
     print("Step 3/6: Applying LoRA configuration...")
     lora_config = setup_lora_config(cfg.lora_r, cfg.lora_alpha, cfg.lora_dropout, cfg.target_modules)
@@ -129,7 +131,7 @@ def train(cfg: FinetuneConfig) -> None:
         print(f"  Eval examples:  {len(eval_dataset)}")
 
     print("Step 5/6: Configuring trainer and starting training...")
-    use_bf16, use_fp16 = _resolve_training_precision(cfg.torch_dtype)
+    use_bf16, use_fp16 = _resolve_training_precision(cfg.torch_dtype, use_cuda)
     training_args = SFTConfig(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_epochs,

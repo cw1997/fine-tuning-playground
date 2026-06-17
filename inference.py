@@ -17,9 +17,9 @@ import torch
 from peft import PeftModel
 from model_utils import adapt_settings_for_device, print_compute_device
 from transformers import (
+    AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    Qwen3ForCausalLM,
     PreTrainedModel,
     PreTrainedTokenizer,
 )
@@ -76,7 +76,7 @@ def resolve_adapter_path(adapter_path: str) -> str:
 def _load_base_model_and_tokenizer(
     base_model_id: str,
     use_4bit: bool = True,
-) -> Tuple[Qwen3ForCausalLM, PreTrainedTokenizer]:
+) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     """
     Internal helper: load the base Qwen3 model and tokenizer.
 
@@ -112,7 +112,7 @@ def _load_base_model_and_tokenizer(
         )
 
     print(f"Loading base model from {base_model_id}...")
-    model = Qwen3ForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         base_model_id,
         quantization_config=quantization_config,
         torch_dtype=compute_dtype,
