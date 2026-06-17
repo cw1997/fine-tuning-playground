@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""
+Generate a ChatML-format JSONL dataset about National Taiwan Normal University (NTNU).
+
+This script creates a comprehensive fine-tuning dataset covering NTNU's history,
+campuses, colleges, rankings, research centers, student life, and more.
+Output: data/ntnu_dataset.jsonl
+"""
+
+import json
+from typing import List, Dict
+
+
+def make_record(messages: List[Dict[str, str]]) -> Dict:
+    """Create a single JSONL record with ChatML messages."""
+    return {"messages": messages}
+
+
+def generate_dataset() -> List[Dict]:
+    """Generate all training records about NTNU."""
+    records = []
+
+    # ──────────────────────────────────────────
+    # 1. General Introduction
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "請簡單介紹國立臺灣師範大學。"},
+        {"role": "assistant", "content": "國立臺灣師範大學，簡稱臺師大、師大或NTNU，是臺灣第一所師範大學，也是臺灣頂尖的綜合型研究大學之一。校本部位於臺北市大安區和平東路一段162號，創立於1922年，最初為臺灣總督府臺北高等學校，經歷臺灣省立師範學院、臺灣省立師範大學等階段，最終於1967年升格為國立臺灣師範大學。校訓為「誠、正、勤、樸」。目前擁有和平、公館、林口三個校區，設有教育、文學、理學、科技與工程、國際與社會科學、運動與休閒、藝術、音樂、管理共九大學院，學生總數約17,000人。師大以教育學、語言學、音樂與藝術等領域聞名國際，也是臺灣國語教學中心（MTC）的所在地，每年吸引來自超過70個國家的1,800多名學生前來學習華語。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "What is National Taiwan Normal University?"},
+        {"role": "assistant", "content": "National Taiwan Normal University (NTNU) is a national comprehensive research university located in Taipei, Taiwan. Founded in 1922 as Taihoku Higher School during Japanese rule, it later evolved into Taiwan Provincial Teachers College and eventually became National Taiwan Normal University in 1967. NTNU is renowned as Taiwan's first teachers' college and has since developed into a comprehensive university with nine colleges: Education, Liberal Arts, Science, Technology and Engineering, International Studies and Social Sciences, Sports and Recreation, Arts, Music, and Management. The university operates three campuses (Heping, Gongguan, and Linkou) across Taipei and New Taipei City, serving approximately 17,000 students. It is particularly famous for its Mandarin Training Center (MTC), the oldest and largest Chinese language teaching institution in Taiwan, attracting about 1,800 students from over 70 countries annually. In the QS World University Rankings 2026, NTNU ranked 435th globally and 80th in Asia."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 2. History
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的歷史沿革是什麼？"},
+        {"role": "assistant", "content": "國立臺灣師範大學的歷史可以追溯到1922年日治時期創立的「臺灣總督府臺北高等學校」，簡稱臺北高校。當時這是全日本38所菁英養成高校之一，也是臺灣唯一的高等學校，具備帝國大學預科性質，畢業生原則上可申請免試直升臺北帝國大學。1945年二戰結束後，國民政府接收臺北高校，將其改名為臺灣省立臺北高級中學。1946年，為填補日籍教師遣返後的中等教育師資缺口，政府成立「臺灣省立師範學院」，最初開設國語、史地、公民訓育、數學、理化、博物、體育、音樂、英語等9個專修科別。1949年臺北高中停辦，師範學院接收其校舍與資源。1955年，臺灣省立師範學院改制為「臺灣省立師範大學」。1967年，為配合師資培育政策，升格為「國立臺灣師範大學」，初期設有教育、文、理、藝術四學院。2006年，國立僑生大學先修班併入師大，成為林口校區。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "What was NTNU's original name when it was founded?"},
+        {"role": "assistant", "content": "NTNU was originally founded as Taihoku Higher School (Taihoku Kōtō Gakkō) in 1922 during Japanese rule in Taiwan. It was one of 38 elite higher schools in Japan at the time and the only one in Taiwan. The school functioned essentially as a preparatory institution for Taipei Imperial University (now National Taiwan University), and its graduates could generally enter the imperial university without taking entrance examinations. After World War II, it briefly became Taiwan Provincial Taipei Senior High School in 1945, then Taiwan Provincial Teachers College in 1946. It underwent several name changes before finally becoming National Taiwan Normal University in 1967."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 3. Campuses
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有幾個校區？分別在哪裡？"},
+        {"role": "assistant", "content": "國立臺灣師範大學共有三個校區：\n\n1. **和平校區**（校本部）：位於臺北市大安區和平東路一段162號，是師大最主要的校區，教育學院、文學院、音樂學院、管理學院、藝術學院及運動與休閒學院皆位於此。校區鄰近師大商圈、大安森林公園，生活機能便利。\n\n2. **公館校區**：位於臺北市文山區汀州路四段88號，緊鄰國立臺灣大學及臺灣科技大學。理學院、科技與工程學院、國際與社會科學學院位於此校區。公館校區設有完善的圖書館分館及運動設施。\n\n3. **林口校區**：位於新北市林口區仁愛路一段2號，原為國立僑生大學先修班，2006年併入師大。目前作為國際與社會科學學院的部分系所及僑生先修課程使用。\n\n三個校區總面積約54.36公頃，其中臺北校區22.36公頃，林口校區32公頃。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "師大和平校區附近有什麼特色？"},
+        {"role": "assistant", "content": "師大和平校區位於臺北市大安區的核心地帶，周邊特色豐富。最著名的當屬「師大商圈」，又稱師大夜市，以異國料理、平價小吃和特色小店聞名，是臺北知名的美食商圈。校園對面就是大安森林公園，被譽為臺北的「城市之肺」，提供廣闊的綠地與運動空間。交通方面，鄰近捷運古亭站與臺電大樓站，並有多條公車路線行經。此外，校區周邊書店林立，尤其是獨立書店與二手書店，形成了濃厚的文藝氛圍。永康街商圈也在步行可達的範圍內，鼎泰豐總店即位於此區。師大校本部的建築風格融合了古典與現代，其中行政大樓（原臺北高校本館）和文薈廳等建築具有重要的歷史文化價值。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 4. Colleges & Departments
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些學院和系所？"},
+        {"role": "assistant", "content": "國立臺灣師範大學目前設有九大學院，共約67個學術系所與13個研究中心：\n\n1. **教育學院**：教育學系、教育心理與輔導學系、社會教育學系、特殊教育學系、課程與教學研究所、教育政策與行政研究所、復健諮商研究所、幼兒與家庭科學學系等。\n\n2. **文學院**：國文學系、英語學系、歷史學系、地理學系、翻譯研究所、臺灣語文學系、臺灣史研究所等。\n\n3. **理學院**：數學系、物理學系、化學系、地球科學系、生命科學系、資訊工程學系、科學教育研究所等。\n\n4. **科技與工程學院**：工業教育學系、科技應用與人力資源發展學系、圖文傳播學系、機電工程學系、電機工程學系、光電工程研究所等。\n\n5. **國際與社會科學學院**：社會工作學研究所、政治學研究所、大眾傳播研究所、歐盟文化與經濟研究所、全球經營與策略研究所、華語文教學系等。\n\n6. **運動與休閒學院**：體育學系、運動競技學系、運動休閒與餐旅管理研究所等。\n\n7. **藝術學院**：美術學系、設計學系、藝術史研究所等。\n\n8. **音樂學院**：音樂學系、民族音樂研究所、表演藝術研究所等。\n\n9. **管理學院**：企業管理學系、國際企業管理學程、管理研究所等。\n\n此外，師大還設有國語教學中心、心理與教育測驗研究發展中心、華語文與科技研究中心等校級研究中心。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "臺師大的教育學院有哪些特色？"},
+        {"role": "assistant", "content": "國立臺灣師範大學教育學院是臺灣歷史最悠久、最具規模的教育專業學院之一。根據《泰晤士高等教育》2025年世界大學排名，師大的教育學科位居全球第49名，亞洲頂尖。\n\n教育學院的核心特色包括：\n\n1. **師資培育龍頭**：作為臺灣第一所師範大學的教育學院，長期負責中等學校教師的培育工作，設有完整的中等教育學程。\n\n2. **多元專業領域**：涵蓋教育學、教育心理與輔導、社會教育、特殊教育、課程與教學、教育政策與行政、復健諮商、幼兒與家庭科學等全方位領域。\n\n3. **測驗評量權威**：院內設有「心理與教育測驗研究發展中心」（心測中心），負責臺灣國中教育會考（CAP）的命題與評量工作，對全國教育體系影響深遠。\n\n4. **國際合作網絡**：為東亞教師教育國際聯盟（ICUE）及國際師資培育學校網絡（INTEI）的成員，與全球多所師範院校有合作交流。\n\n5. **學術研究重鎮**：《教育研究集刊》等學術期刊在此發行，長期引領華人教育學術研究發展。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "師大音樂學院有什麼特色？"},
+        {"role": "assistant", "content": "國立臺灣師範大學音樂學院是臺灣最具規模與聲望的音樂高等教育機構之一，其前身為1946年設立的教育學院音樂系。音樂學院擁有全臺唯一的音樂圖書館，典藏豐富的書籍、樂譜與影音資料。學院每年舉辦約80場大師班教學暨專題演講，邀請國際頂尖音樂家如大提琴家亞歷山大·魯丁、小提琴家林昭亮等擔任講座教授。音樂學系的課程設計以高層次知性教育為宗旨，涵蓋鋼琴、聲樂、弦樂、管樂、擊樂、理論作曲及國樂等各大領域，並設有民族音樂研究所和表演藝術研究所，形成完整的音樂學術體系。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "Does NTNU have an international college?"},
+        {"role": "assistant", "content": "Yes, NTNU has the College of International Studies and Social Sciences (國際與社會科學學院), established to foster global perspectives and interdisciplinary research. The college offers programs in social work, political science, mass communication, EU culture and economy, global business and strategy, and Chinese language teaching. Additionally, NTNU offers several English-taught undergraduate programs including Global Studies, Physics, and a Transdisciplinary Program in Education, making the university highly accessible to international students. The university hosts over 1,900 international students from more than 70 countries, and the Office of International Affairs (OIA) provides comprehensive support services including orientation programs, cultural excursions, and academic advising."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 5. Rankings
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的國際排名如何？"},
+        {"role": "assistant", "content": "國立臺灣師範大學在國際各大排名機構中均有出色表現：\n\n**QS世界大學排名**：\n- 2026年：全球第435名\n- 2025年：全球第452名\n- 亞洲排名：第80名（2026年）\n- QS學科排名：全球第27名（教育學）\n\n**泰晤士高等教育（THE）世界大學排名**：\n- 2026年：全球第501-600名\n- 教育學科：全球第49名（2025年）\n- 藝術與人文：全球第301-400名\n- 心理學：全球第301-400名\n- 電腦科學：全球第401-500名\n\n師大在教育學領域的表現尤為突出，THE教育學科排名全球第49名，QS教育學科排名在亞洲師範大學中持續蟬聯龍頭地位。此外，師大也是臺灣教育部「大專校院學生雙語化學習計畫」四所全校型標竿大學之一，以及「邁向頂尖大學計畫」十二所大學之一。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 6. Mandarin Training Center (MTC)
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "請介紹師大的國語教學中心（MTC）。"},
+        {"role": "assistant", "content": "國立臺灣師範大學國語教學中心（Mandarin Training Center, MTC）成立於1956年，是臺灣歷史最悠久、規模最大的華語教學機構，也是世界知名的中文學習中心。\n\nMTC每年招收來自超過70個國家的約1,800名學生，提供從初級到高級的各種華語課程，包括日常會話、商業中文、新聞中文、中華文化課程等。中心也提供華語文能力測驗（TOCFL）的培訓，TOCFL是由師大研發的臺灣官方華語能力測驗。\n\nMTC的一大特色是多元的課外活動，包括語言競賽、運動比賽、文化體驗和校外教學。學生可以參加書法、國畫、太極拳、包水餃等文化活動，深入體驗中華文化。中心也設有線上遠距課程，自2011年開始發展，將優質的華語教學推向全球。\n\n許多國際知名人士曾在此學習中文，包括澳洲前總理陸克文（Kevin Rudd）。MTC的師資陣容堅強，教材研發領先全球，《當代中文課程》系列教材被廣泛採用。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "Tell me about the Mandarin Training Center at NTNU."},
+        {"role": "assistant", "content": "The Mandarin Training Center (MTC) at National Taiwan Normal University is the oldest and largest Chinese language teaching institution in Taiwan. Established in 1956, MTC enrolls approximately 1,800 students annually from over 70 countries worldwide. The center offers a comprehensive range of Chinese language programs from beginner to advanced levels, including daily conversation, business Chinese, news Chinese, and Chinese culture courses. MTC also administers training for the Test of Chinese as a Foreign Language (TOCFL), Taiwan's official Chinese proficiency exam developed by NTNU. Notable alumni include former Australian Prime Minister Kevin Rudd. The center is renowned for its high-quality teaching materials, including the widely-used 'A Course in Contemporary Chinese' textbook series. Since 2011, MTC has also developed online distance learning courses to reach students globally. Cultural activities such as calligraphy, Chinese painting, tai chi, and dumpling-making are integrated into the curriculum to provide immersive learning experiences."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 7. Research Centers
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些重要的研究中心？"},
+        {"role": "assistant", "content": "國立臺灣師範大學設有多個重要的校級研究中心，以下列舉幾個最具代表性的：\n\n1. **心理與教育測驗研究發展中心（心測中心, RCPET）**：成立於1990年，是臺灣最重要的教育測驗研究機構，負責國中教育會考（CAP）的命題、施測、評量與分析工作。每年約有20萬名國中應屆畢業生參加會考，影響全國教育體系。\n\n2. **華語文與科技研究中心（CLTC）**：成立於2011年，整合語言學、心理學、學習科技和測驗評量等領域，研發多項前瞻性的華語文教學數位平台與技術，涵蓋正體字與簡體字。\n\n3. **科學教育中心**：長期推動臺灣的科學教育改革與研究，出版《科學教育學刊》等重要學術刊物。\n\n4. **國際臺灣學研究中心**：致力於臺灣研究（Taiwan Studies）的國際化與學術交流。\n\n5. **高等教育深耕計畫研究中心**：負責教育部各項高教政策的評估與研究。\n\n此外，師大各學院也設有眾多院級研究中心，涵蓋環境教育、防災教育、運動科學、藝術人文等多元領域。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "What is the Research Center for Psychological and Educational Testing at NTNU?"},
+        {"role": "assistant", "content": "The Research Center for Psychological and Educational Testing (RCPET), also known as 心理與教育測驗研究發展中心 or 心測中心, is one of NTNU's most influential research centers. Founded in 1990, RCPET is responsible for developing, administering, and scoring Taiwan's Comprehensive Assessment Program for Junior High School Students (CAP), which is the national high school entrance examination taken by approximately 200,000 students annually. This makes RCPET one of the most consequential educational assessment centers in Taiwan, directly shaping the curriculum and educational outcomes across the country. The center also conducts research in psychological testing, educational measurement, and assessment methodology, publishing extensively in academic journals and contributing to education policy development in Taiwan."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 8. Student Life
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的學生生活有什麼特色？"},
+        {"role": "assistant", "content": "國立臺灣師範大學的學生生活豐富多元，以下是一些特色：\n\n**社團活動**：師大有超過160個學生社團，涵蓋學術、藝術、音樂、體育、服務、聯誼等類別。每年的社團博覽會和迎新活動是新生認識社團的重要場合。\n\n**體育賽事**：師大的體育傳統深厚，每年舉辦全校運動會、系際球賽等。啦啦隊比賽是師大的重要傳統活動之一，各系學生從開學就開始排練，展現團隊精神與創意。\n\n**國際文化節**：由於外籍學生眾多，師大每年舉辦國際文化節（International Culture Festival），各國學生設攤展示母國文化、美食與服飾，是校園最具國際色彩的活動。\n\n**師大夜市**：位於校門口的師大商圈是學生生活的核心區域，各式平價美食、咖啡廳、書店和服飾店應有盡有。\n\n**宿舍生活**：師大提供多棟學生宿舍，國際學生享有優先住宿權。宿舍區位於校本部周邊，生活便利。\n\n**學術活動**：各學院定期舉辦講座、研討會、工作坊，邀請國內外學者交流。圖書館全年舉辦展覽與閱讀推廣活動。"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "師大的圖書館怎麼樣？"},
+        {"role": "assistant", "content": "國立臺灣師範大學圖書館系統分為總館（位於和平校區）與公館分館。總館建築為地下二層、地上八層的現代化建築，藏書豐富，涵蓋教育、人文、科學、藝術等各領域。\n\n師大圖書館的特色包括：\n1. **教育與心理學藏書**：因師大在此領域的學術地位，相關藏書量為全國之冠。\n2. **音樂圖書館**：全臺唯一專門的音樂圖書館，位於音樂學院，收藏大量樂譜、音樂書籍與影音資料。\n3. **梁實秋故居藏書**：設有梁實秋紀念館，保存這位文學大師的手稿與藏書。\n4. **數位資源**：提供豐富的電子資料庫、電子書與電子期刊，支援全校師生的研究需求。\n5. **24小時自習室**：考試期間開放24小時，滿足學生的學習需求。\n\n此外，透過國立臺灣大學系統（NTU System），師大學生也可使用臺灣大學與臺灣科技大學的圖書館資源，實現三校圖書互借。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 9. NTU System
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "什麼是國立臺灣大學系統？師大在其中扮演什麼角色？"},
+        {"role": "assistant", "content": "國立臺灣大學系統（National Taiwan University System, NTU System）成立於2015年，由國立臺灣大學、國立臺灣師範大學與國立臺灣科技大學三所頂尖大學組成。這是臺灣第一個由國立大學自發組成的聯合系統，旨在整合三校資源、促進跨校合作。\n\n在這個系統中，師大扮演著人文與教育領域的核心角色。系統的具體合作包括：\n1. **跨校選課**：三校學生可以互相選修課程，學分互相承認。\n2. **跨校輔系與雙主修**：學生可以申請他校的輔系或雙主修，取得跨領域專長。\n3. **圖書館資源共享**：三校圖書館藏互通，學生可跨校借書。\n4. **跨校研究合作**：教師可跨校組成研究團隊，申請共同研究計畫。\n5. **共享學術活動**：三校共同舉辦講座、研討會及社團活動。\n\n這個系統結合了三所大學的優勢：臺大的綜合研究實力、師大的人文教育底蘊、臺科的工程應用技術，形成完整的學術生態系統。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 10. Affiliated High School
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "請介紹師大附中。"},
+        {"role": "assistant", "content": "國立臺灣師範大學附屬高級中學，簡稱師大附中，是師大的附屬中學，位於臺北市大安區信義路三段143號。師大附中是臺灣最頂尖的國立高中之一，成立於1937年，歷史悠久，校友遍布各界。\n\n師大附中以自由開放的校風聞名，學生社團活動蓬勃發展。該校在各項學科競賽、科學展覽及大學升學表現上均名列前茅。校園內設有附中圖書館、音樂館、體育館等完善設施。\n\n作為師大的附屬中學，附中與師大之間有密切的合作關係，包括師資培育學生實習、教育研究合作、學術資源共享等。許多師大學生在附中進行教育實習，附中學生也可使用部分師大的學術資源。\n\n著名的附中校友包括歌手羅大佑、陳綺貞、張雨生，作家吳淡如，以及許多政界、學術界與文化界的知名人士。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 11. Notable Alumni
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些知名校友？"},
+        {"role": "assistant", "content": "國立臺灣師範大學培育了許多在各領域發光發熱的傑出校友。以下列舉部分代表性人物：\n\n**學術界**：\n- 李遠哲：諾貝爾化學獎得主（曾於師大任教）\n- 曾志朗：中央研究院院士，前教育部長\n- 張厚燦：國際知名心理學家\n\n**文學界**：\n- 梁實秋：文學大師、翻譯家（曾任師大教授及系主任）\n- 余光中：詩人、散文家\n- 張曉風：散文家\n- 簡媜：散文家\n\n**藝術界**：\n- 劉國松：現代水墨畫家\n- 廖修平：版畫家\n\n**音樂界**：\n- 許常惠：作曲家、音樂學家\n- 馬水龍：作曲家\n\n**教育界**：\n- 劉真：前師範大學校長\n- 郭為藩：前教育部長\n\n**政界**：\n- 吳清基：前教育部長\n- 蔣偉寧：前教育部長\n- 陸克文（Kevin Rudd）：澳洲前總理（曾於MTC學習中文）\n\n**媒體界**：\n- 沈春華：資深新聞主播\n- 李四端：資深新聞主播"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 12. Motto and Symbols
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的校訓和校徽有什麼意涵？"},
+        {"role": "assistant", "content": "**校訓**：師大的校訓為「誠、正、勤、樸」四個字，由前校長劉真先生訂定：\n- **誠**：真誠無偽，言行一致\n- **正**：公正無私，光明正大\n- **勤**：勤奮不懈，自强不息\n- **樸**：樸實無華，節儉務實\n\n這四個字代表師大精神的核心價值，也作為師大人待人處事與求學研究的根本原則。\n\n**校徽**：師大的校徽呈圓形，外圈上方為「國立臺灣師範大學」中文字樣，下方為英文校名「NATIONAL TAIWAN NORMAL UNIVERSITY」。內圈圖案由三個元素組成：中央的書本象徵知識與教育，右側的筆象徵書寫與創作，左側的像是象徵智慧與思辨。整體設計傳達了師大作為師資培育搖籃與學術研究重鎮的使命。\n\n**校徽顏色**：師大的代表色為「師大紅」與「師大藍」，分別象徵熱情與穩重。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 13. Bilingual Education
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大在雙語教育方面有什麼計劃？"},
+        {"role": "assistant", "content": "國立臺灣師範大學是教育部「大專校院學生雙語化學習計畫」的四所全校型標竿大學之一（另三所為臺灣大學、成功大學與中山大學），這個計畫旨在推動高等教育雙語化，目標是2030年將臺灣打造成雙語國家。\n\n師大在雙語教育方面的具體措施包括：\n1. **全英語授課課程**：開設超過300門全英語授課課程，涵蓋各學院的核心與選修課程。\n2. **英語授課學位學程**：提供全球研究、物理學、教育跨域學程等全英語學士班課程。\n3. **教師培訓**：提供教師英語教學培訓與獎勵，提升全英語授課品質。\n4. **學生英語能力強化**：設立英語學習中心，提供英語諮詢、寫作指導及檢定考試輔導。\n5. **國際化環境**：透過大量國際學生與本地學生的互動，創造自然的雙語環境。\n6. **EMI（English as a Medium of Instruction）教學資源中心**：作為全國EMI教學的資源中心，協助其他大學推動雙語教學。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 14. Professors and Academic Excellence
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些著名的教授或學者？"},
+        {"role": "assistant", "content": "國立臺灣師範大學歷史上擁有許多重量級學者，包括：\n\n**文學與語言領域**：\n- **梁實秋**：中國文學泰斗，曾任英語系主任，主編《遠東英漢大辭典》，翻譯《莎士比亞全集》。\n- **余光中**：著名詩人、作家，曾任文學院院長，詩作《鄉愁》入選華語教材。\n- **許師慎**：國學大師。\n\n**教育與心理領域**：\n- **劉真**：前校長，教育家，制訂「誠正勤樸」校訓。\n- **郭為藩**：特殊教育專家，前教育部長。\n- **吳武典**：特殊教育學者。\n\n**自然科學領域**：\n- **李遠哲**：諾貝爾化學獎得主，曾於師大化學系任教。\n- **王建平**：物理學家。\n\n**音樂與藝術領域**：\n- **許常惠**：作曲家，民族音樂學家。\n- **陳郁秀**：音樂學者，前文建會主委。\n- **廖修平**：版畫大師。\n\n目前師大擁有眾多講座教授與特聘教授，持續在各學術領域保持領先研究地位。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 15. International Programs & Admission
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "外國學生如何申請就讀師大？"},
+        {"role": "assistant", "content": "外國學生申請就讀國立臺灣師範大學有以下管道：\n\n**1. 外國學生申請入學**：每年分秋季班（9月入學）與春季班（2月入學）兩梯次。申請時間通常為入學前一年的11月至當年的3月。透過師大國際事務處（OIA）的線上申請系統進行。所需文件包括：學歷證明、成績單、推薦信、讀書計畫、語言能力證明等。\n\n**2. 獎學金**：\n- 臺灣獎學金（Taiwan Scholarship）：由教育部提供，需向各國駐外使館申請\n- 師大獎學金（NTNU Scholarship）：全額學費減免，學士班1年、碩士班2年、博士班3年\n\n**3. 華語先修**：中文能力尚未達到入學標準的學生，可先在MTC（國語教學中心）學習華語，通過檢定後再申請正式學位。\n\n**4. 交換學生**：師大與全球超過300所大學簽有交換學生協議，透過原就讀學校的國際事務處申請即可。\n\n**英語授課學程**：無中文基礎的學生可申請全英語授課的Global Studies、Physics等學程。\n\n詳細資訊請參考師大國際事務處網站：https://en.ntnu.edu.tw/oia.php"}
+    ]))
+
+    records.append(make_record([
+        {"role": "user", "content": "How can international students apply to NTNU?"},
+        {"role": "assistant", "content": "International students can apply to National Taiwan Normal University through the following pathways:\n\n1. **International Student Admission**: Applications are accepted twice a year — Fall semester (September intake, application November-March) and Spring semester (February intake, application July-September). The online application is processed through NTNU's Office of International Affairs (OIA). Required documents include academic transcripts, degree certificates, recommendation letters, a study plan, and language proficiency proof.\n\n2. **Scholarships**: The Taiwan Scholarship (offered by the Ministry of Education, applied through embassies) and the NTNU Scholarship (full tuition waiver — 1 year for bachelor's, 2 years for master's, 3 years for doctoral programs) are available.\n\n3. **Chinese Language Preparatory Program**: Students who do not yet meet the Chinese proficiency requirements can first study at the Mandarin Training Center (MTC) and apply for a degree program after passing the TOCFL exam.\n\n4. **Exchange Programs**: NTNU has exchange agreements with over 300 universities worldwide. Students should apply through their home university's international office.\n\n5. **English-Taught Programs**: For students with no Chinese background, NTNU offers several English-taught bachelor's programs including Global Studies and Physics."}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 16. Location & Transportation
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的地址和交通方式？"},
+        {"role": "assistant", "content": "國立臺灣師範大學各校區的地址與交通方式如下：\n\n**和平校區（校本部）**\n地址：臺北市大安區和平東路一段162號\n交通：\n- 捷運：搭乘松山新店線（綠線）至「古亭站」或「臺電大樓站」，步行約5-10分鐘\n- 公車：18、52、235、278、和平幹線等多路公車可達\n- 自行開車：校區周邊有收費停車場\n\n**公館校區**\n地址：臺北市文山區汀州路四段88號\n交通：\n- 捷運：搭乘松山新店線（綠線）至「公館站」，步行約10分鐘\n- 公車：多路公車可達\n\n**林口校區**\n地址：新北市林口區仁愛路一段2號\n交通：\n- 可搭乘機捷（桃園機場捷運）至「林口站」轉乘公車\n- 或於臺北車站搭乘三重客運至林口\n\n總機電話：(02) 7749-1111\n官方網站：www.ntnu.edu.tw"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 17. Affiliated Organizations
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些附屬機構？"},
+        {"role": "assistant", "content": "國立臺灣師範大學設有多個重要的附屬機構：\n\n1. **國立臺灣師範大學附屬高級中學（師大附中）**：位於臺北市大安區，是臺灣頂尖高中之一。\n\n2. **國語教學中心（Mandarin Training Center, MTC）**：成立於1956年，是臺灣歷史最悠久的華語教學機構，每年約有1,800名來自70多國的學生就讀。\n\n3. **心理與教育測驗研究發展中心（心測中心, RCPET）**：負責全國國中教育會考的命題與評量。\n\n4. **華語文與科技研究中心（CLTC）**：整合語言學與科技，研發華語文教學數位平台。\n\n5. **科學教育中心**：推動科學教育研究與改革。\n\n6. **環境教育中心**：推廣環境教育與永續發展。\n\n7. **圖書館**：總館與公館分館，藏書豐富。\n\n8. **師大出版社**：出版各類學術書籍與期刊。\n\n9. **進修推廣學院**：提供在職進修、推廣教育與學分班課程。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 18. Translation & Interpretation Institute
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的翻譯研究所怎麼樣？"},
+        {"role": "assistant", "content": "國立臺灣師範大學翻譯研究所成立於1996年，是臺灣最具規模與聲望的翻譯學術機構之一，也是國內唯一設有翻譯博士學位的研究所。\n\n其特色包括：\n\n1. **分組獨特**：設有「口筆譯組」和「會議口譯組」，而非傳統的筆譯組與口譯組分法。口筆譯組學生必須同時修習口譯和筆譯技能，以因應職場需求；會議口譯組則專注於逐步口譯與同步口譯。\n\n2. **學制完整**：設有博士班與碩士班，博士班專注於拓展翻譯研究領域，碩士班則強調理論與實務並重。\n\n3. **學生表現優異**：2014年第五屆海峽兩岸口譯大賽，來自兩岸與英美240所大學的3000多名選手角逐，師大翻譯所學生勇奪第一名、第三名與第四名。\n\n4. **校友網絡堅強**：大量校友已在翻譯市場佔有重要地位，畢業生在師長與學長姐人脈的引領下就業情況良好。\n\n5. **國際化環境**：國際生與僑生約佔學生人數16%，來自美國、加拿大、義大利、西班牙、新加坡、韓國、泰國等國。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 19. History (detailed - Taipei Higher School)
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "什麼是臺北高校？和師大有什麼關係？"},
+        {"role": "assistant", "content": "臺北高校的全名是「臺灣總督府臺北高等學校」，成立於1922年，是日治時期臺灣唯一的高等學校，也是全日本38所菁英養成高校之一。臺北高校為七年制學制（尋常科四年、高等科三年），具有帝國大學預科性質，畢業生原則上可申請免試直升臺北帝國大學（今國立臺灣大學）。\n\n臺北高校創校初期曾借用臺北州立臺北第一中學校（今建國中學）校舍，1926年遷至古亭町（即現在的師大和平校區現址）。1942年附設「臨時教員養成所」，開啟了中等教育師資培育的先河。\n\n1945年二戰結束後，國民政府將臺北高校改名為「臺灣省立臺北高級中學」。1949年臺北高中停辦，其校舍與資源由1946年成立的「臺灣省立師範學院」（師大前身）全面接收，因此師大的和平校區就是當年臺北高校的校址。\n\n時至今日，師大校園內仍保留著臺北高校時代的建築，如行政大樓（原臺北高校本館）等，見證了近一個世紀的教育發展歷程。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 20. Sports and Athletics
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大的體育發展有什麼特色？"},
+        {"role": "assistant", "content": "國立臺灣師範大學在體育領域具有悠久的傳統與卓越的成就。運動與休閒學院是師大九大學院之一，設有體育學系、運動競技學系、運動休閒與餐旅管理研究所等單位。\n\n師大體育的特色包括：\n\n1. **優秀運動員搖籃**：師大培養了許多臺灣頂尖運動員，涵蓋籃球、排球、桌球、羽球、田徑、體操等項目。多名師大校友曾代表臺灣參加奧運會、亞運會等國際賽事。\n\n2. **完善運動設施**：校本部設有體育館、游泳池、田徑場、籃球場、排球場、網球場等設施；公館校區亦有專屬的運動場地。\n\n3. **啦啦隊傳統**：師大的啦啦隊比賽是年度盛事，各系隊從開學即開始訓練，展現高難度的特技與團隊合作精神。\n\n4. **體育學術研究**：體育學系在運動科學、運動心理學、運動生理學等領域有豐富的研究成果。\n\n5. **師大籃球隊**：師大男籃與女籃均為大專籃球聯賽（UBA）的常勝軍，多次奪冠。\n\n6. **適應體育**：師大在適應體育（Adapted Physical Education）領域的研究與教學在亞洲居領先地位。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 21. Libraries and Museums
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些博物館或文物館？"},
+        {"role": "assistant", "content": "國立臺灣師範大學擁有多個博物館與文物館：\n\n1. **師大美術館**：位於藝術學院，定期舉辦國內外藝術家的展覽，展出繪畫、雕塑、裝置藝術等作品，是臺北重要的當代藝術空間之一。\n\n2. **梁實秋故居**：位於和平校區內，是文學大師梁實秋在師大任教期間的住所。故居保留當年的格局與家具，展示梁實秋的手稿、藏書與生活用品，是文學愛好者的重要朝聖地。\n\n3. **音樂系文物館**：收藏了許多珍貴的樂器、樂譜與音樂文物，見證臺灣音樂教育的發展歷史。\n\n4. **地理系標本館**：展示各類地質標本、地形模型與地圖，是地理教學與研究的重要資源。\n\n5. **物理系演示廳**：設有各種物理實驗演示裝置，供教學與科普推廣使用，定期對外開放參觀。\n\n6. **數位校史館**：線上展示師大百年來的歷史照片、文獻與多媒體資料，可透過師大官方網站瀏覽。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 22. NTNU in Popular Culture
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大周邊有什麼著名的景點或文化地標？"},
+        {"role": "assistant", "content": "國立臺灣師範大學和平校區位於臺北市中心精華地段，周邊有許多著名景點與文化地標：\n\n1. **師大商圈（師大夜市）**：以異國料理和文青小店聞名，有別於傳統觀光夜市，這裡更受年輕人和學生喜愛，咖啡廳、獨立書店、文創小店林立。\n\n2. **大安森林公園**：佔地26公頃，被稱為臺北的「城市之肺」，是市民休閒運動的重要場所。\n\n3. **永康街商圈**：步行可達，以美食聞名，包括鼎泰豐總店、永康牛肉麵、芒果冰等國際知名美食。\n\n4. **青田街與溫州街巷弄**：日治時期遺留下來的宿舍區，巷弄間充滿老樹與古樸的日式建築，許多咖啡廳和獨立書店藏身其中，是臺北最具文藝氣息的街區之一。\n\n5. **紀州庵文學森林**：位於同安街，原為日治時期的料理屋，現為文學推廣空間，定期舉辦文學講座與展覽。\n\n6. **寶藏巖國際藝術村**：位於公館校區附近，是一個由違建聚落改造的藝術村，充滿歷史與藝術交織的獨特氛圍。\n\n7. **自來水園區**：靠近公館校區，為古蹟建築與親水公園結合的觀光景點。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 23. Sustainability and SDGs
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大在永續發展方面做了哪些努力？"},
+        {"role": "assistant", "content": "國立臺灣師範大學在永續發展（Sustainability）與聯合國永續發展目標（SDGs）方面有具體的推動措施與成果：\n\n1. **永續發展委員會**：設立校級永續發展委員會，統籌全校永續政策與行動方案。\n\n2. **SDG研究**：師大在THE Impact Rankings（影響力排名）中表現亮眼，2025年總排名全球第301-400名。其中潔淨水與衛生（SDG 6）排名全球第101-200名，性別平等（SDG 5）排名全球第201-300名。\n\n3. **綠色校園**：推動節能減碳、廢棄物減量、綠色採購、綠建築等環境友善措施。\n\n4. **環境教育中心**：作為環境教育的重要推手，研發教材、培訓師資、推廣環境意識。\n\n5. **永續發展課程**：開設多門與永續發展相關的課程，將SDGs融入各學院教學。\n\n6. **社會責任實踐（USR）**：透過大學社會責任計畫，連結社區、偏鄉學校與弱勢群體，實踐社會正義與永續發展。\n\n7. **臺灣永續治理大學聯盟**：師大為該聯盟成員，與其他大學共同推動高等教育永續治理。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 24. Partnerships & International Collaboration
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大有哪些國際合作夥伴？"},
+        {"role": "assistant", "content": "國立臺灣師範大學與全球超過300所大學與研究機構建立了合作關係，遍布美洲、歐洲、亞洲、大洋洲與非洲。主要的國際聯盟與合作包括：\n\n1. **國立臺灣大學系統（NTU System）**：與臺灣大學、臺灣科技大學組成國內學術聯盟。\n\n2. **東亞教師教育國際聯盟（ICUE）**：與東亞各師範院校合作推動教師教育。\n\n3. **國際師資培育學校網絡（INTEI）**：全球師資培育機構的合作網絡。\n\n4. **全球產學未來人才培育策略聯盟（UAiTED）**：與全球頂尖大學合作培育產業人才。\n\n5. **臺英大學聯盟**：與英國多所大學的學術合作。\n\n6. **臺灣區塊鏈大學聯盟**：推動區塊鏈技術研究與教育。\n\n7. **臺灣大學學術聯盟**：與國內多所大學的學術合作網絡。\n\n8. **亞太商學院聯合會（AAPBS）**：管理學院的國際認證與合作組織。\n\n9. **國際商管學院促進協會（AACSB）**：管理學院獲得AACSB國際認證，確保教學品質達世界標準。\n\n具體合作形式包括學生交換、雙聯學位、共同研究、合辦學術研討會、教師互訪等。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 25. General Q&A Style
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "師大校園最美的地方是哪裡？"},
+        {"role": "assistant", "content": "國立臺灣師範大學和平校區有許多美麗的角落，以下幾個是師大人公認最美的校園景點：\n\n1. **行政大樓（原臺北高校本館）**：建於1926年，是師大歷史最悠久的建築，紅磚外牆搭配古典風格的立面設計，被列為臺北市歷史建築。大樓前的草坪與老樹形成了師大最具代表性的校園景觀。\n\n2. **文薈廳**：位於行政大樓後方，原為臺北高校的禮堂，建築風格典雅，內部保留木造結構，經常用於小型音樂會與藝文活動。\n\n3. **圖書館前廣場**：寬敞的廣場與綠地是學生課餘休憩、社團活動的重要場所。\n\n4. **師大美術館周邊**：藝術學院的建築與戶外雕塑作品相映成趣，充滿藝術氣息。\n\n5. **林口校區的櫻花林**：每年春季櫻花盛開時，林口校區的櫻花道是師大著名的賞花景點。\n\n6. **公館校區的湖畔**：公館校區的人工湖與周邊綠地提供了寧靜的學習與休憩環境。\n\n整體而言，師大校園雖然不大，但百年樹木與古典建築交織，處處可見歷史與人文的痕跡。"}
+    ]))
+
+    # ──────────────────────────────────────────
+    # 26. TOCFL - Chinese Test
+    # ──────────────────────────────────────────
+    records.append(make_record([
+        {"role": "user", "content": "什麼是TOCFL？和師大有什麼關係？"},
+        {"role": "assistant", "content": "TOCFL（Test of Chinese as a Foreign Language）華語文能力測驗，是臺灣官方認證的華語能力測驗系統，相當於英語的TOEFL或IELTS。TOCFL由國立臺灣師範大學研發與主辦，是師大對國際華語教育的重要貢獻之一。\n\nTOCFL的特色包括：\n\n1. **分級標準**：參照CEFR（歐洲共同語言參考架構），分為六個等級：A1（入門級）、A2（基礎級）、B1（進階級）、B2（高階級）、C1（流利級）、C2（精通級）。\n\n2. **測驗項目**：包括聽力測驗、閱讀測驗、口語測驗與寫作測驗。\n\n3. **國際認可**：TOCFL成績被全球多所大學和企業採認，作為華語能力證明。\n\n4. **用途廣泛**：外國學生申請臺灣大學、申請獎學金、求職等均可使用TOCFL成績。\n\n5. **數位化**：近年推動電腦化測驗，全球有多個考點。\n\nTOCFL與師大的國語教學中心（MTC）密切配合，MTC學生在課程結束後常參加TOCFL考試以驗證學習成果。"}
+    ]))
+
+    return records
+
+
+def save_as_jsonl(records: List[Dict], filepath: str) -> None:
+    """Save records as JSONL (one JSON object per line)."""
+    with open(filepath, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    print(f"Dataset saved to {filepath}")
+    print(f"Total records: {len(records)}")
+
+
+if __name__ == "__main__":
+    dataset = generate_dataset()
+    save_as_jsonl(dataset, "data/ntnu_dataset.jsonl")
