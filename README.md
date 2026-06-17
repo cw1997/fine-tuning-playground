@@ -167,16 +167,13 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. Run training with the bundled NTNU dataset (161 ChatML examples)
-python run_sft.py \
-    --model_id Qwen/Qwen3.5-4B \
-    --dataset_path ./data/ntnu_dataset.jsonl \
-    --output_dir ./models/ntnu-finetuned
+python run_sft.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
-python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Tell me about National Taiwan Normal University."
+python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned --prompt "Tell me about National Taiwan Normal University."
+python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
 ```
 
 See the [Usage](#usage) section for detailed training options and dataset formats.
@@ -231,7 +228,7 @@ All hyperparameters are defined in `FinetuneConfig` (`config.py`). Below is a co
 
 | Category | Parameter | Default | Description |
 |---|---|---|---|
-| **Model** | `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` on GPU) |
+| **Model** | `model_id` | `Qwen/Qwen3.5-4B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` on GPU) |
 | | `load_in_4bit` | `True` | Enable 4-bit NF4 quantization (auto-disabled on CPU) |
 | | `torch_dtype` | `bfloat16` | Computation dtype (falls back to `float32` on CPU) |
 | **LoRA** | `lora_r` | `16` | LoRA rank |
@@ -258,7 +255,7 @@ All hyperparameters are defined in `FinetuneConfig` (`config.py`). Below is a co
 | | `top_p` | `0.9` | Nucleus sampling threshold |
 | | `use_thinking` | `False` | Enable thinking mode in chat template |
 
-> **Note:** `FinetuneConfig.model_id` defaults to `Qwen/Qwen3.5-0.8B` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. The `inference.py` CLI defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned.
+> **Note:** `FinetuneConfig.model_id` defaults to `Qwen/Qwen3.5-4B` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. The `inference.py` CLI defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned.
 
 ---
 
