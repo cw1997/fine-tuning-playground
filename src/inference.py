@@ -18,7 +18,6 @@ Usage:
 """
 
 import os
-import warnings
 
 import certifi
 
@@ -27,10 +26,6 @@ for _ssl_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
     _ssl_val = os.environ.get(_ssl_var)
     if _ssl_val and not os.path.isfile(_ssl_val):
         os.environ[_ssl_var] = certifi.where()
-
-# Suppress FutureWarning from torch internals and Triton FLOP counter warnings
-warnings.filterwarnings("ignore", message=".*_check_is_size.*")
-warnings.filterwarnings("ignore", message=".*triton not found.*")
 
 import argparse
 import shutil
