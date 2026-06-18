@@ -9,6 +9,12 @@ Usage:
     python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Hello"
     python src/inference.py --mode finetuned --adapter_path ./models/ntnu-finetuned
     python src/inference.py --mode compare --adapter_path ./models/ntnu-finetuned
+
+    # Interactive mode (default): keep entering prompts after loading; type quit to exit
+    python src/inference.py --mode finetuned --adapter_path ./models/ntnu/qwen3.5-4b
+
+    # One-shot batch mode for scripts
+    python src/inference.py --mode base --prompt "Hello" --no_interactive
 """
 
 import os
@@ -36,6 +42,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 ADAPTER_CONFIG_NAME = "adapter_config.json"
+EXIT_COMMANDS = frozenset({"quit", "exit", "q"})
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +75,11 @@ def parse_args() -> argparse.Namespace:
                         help="Nucleus sampling threshold")
     parser.add_argument("--use_thinking", type=lambda x: x.lower() == "true", default=False,
                         help="Enable thinking mode")
+    parser.add_argument(
+        "--no_interactive",
+        action="store_true",
+        help="Run batch inference only and exit (no interactive prompt loop)",
+    )
 
     args = parser.parse_args()
 
@@ -259,10 +271,12 @@ def generate_response(
 
 
 def build_test_prompts(args: argparse.Namespace) -> List[List[Dict[str, str]]]:
-    """Build a list of test prompts from CLI args or defaults.
+    """Build a list of batch test prompts from CLI args or defaults.
 
     If --prompt is provided, a single-turn conversation is created.
-    Otherwise, a set of default English prompts about NTNU are used.
+    In interactive mode (default), an empty list is returned when --prompt
+    is omitted so the script goes straight to the input loop.
+    With --no_interactive and no --prompt, default NTNU test prompts are used.
 
     Args:
         args: Parsed CLI arguments.
@@ -272,10 +286,12 @@ def build_test_prompts(args: argparse.Namespace) -> List[List[Dict[str, str]]]:
     """
     if args.prompt:
         return [[{"role": "user", "content": args.prompt}]]
-    return [
-        [{"role": "user", "content": "Tell me about National Taiwan Normal University."}],
-        [{"role": "user", "content": "What is the history of NTNU?"}],
-    ]
+    if args.no_interactive:
+        return [
+            [{"role": "user", "content": "Tell me about National Taiwan Normal University."}],
+            [{"role": "user", "content": "What is the history of NTNU?"}],
+        ]
+    return []
 
 
 def run_base_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, str]]], args: argparse.Namespace):
@@ -297,29 +313,37 @@ def run_base_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, str]]
         print(f"Response:\n{response}")
 
 
-def run_finetuned_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, str]]], args: argparse.Namespace):
-    """Run inference using a fine-tuned LoRA adapter loaded on top of the base model.
+def run_finetuned_mode(
+    ft_model,
+    tokenizer,
+    test_prompts: List[List[Dict[str, str]]],
+    args: argparse.Namespace,
+):
+    """Run batch inference using a pre-loaded fine-tuned LoRA adapter.
 
     Args:
-        base_model: The base pretrained model.
+        ft_model: PEFT-wrapped model with the LoRA adapter already loaded.
         tokenizer: The model tokenizer.
         test_prompts: List of test prompt message lists.
-        args: Parsed CLI arguments with adapter_path and generation parameters.
+        args: Parsed CLI arguments with generation parameters.
     """
-    resolved_path = resolve_adapter_path(args.adapter_path)
-    print(f"Loading LoRA adapter from {resolved_path}...")
-    model = PeftModel.from_pretrained(base_model, resolved_path)
     print("Running inference with FINE-TUNED model...")
     for messages in test_prompts:
         print(f"\nPrompt: {messages[-1]['content']}")
         response = generate_response(
-            model, tokenizer, messages,
+            ft_model, tokenizer, messages,
             args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
         )
         print(f"Response:\n{response}")
 
 
-def run_compare_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, str]]], args: argparse.Namespace):
+def run_compare_mode(
+    base_model,
+    ft_model,
+    tokenizer,
+    test_prompts: List[List[Dict[str, str]]],
+    args: argparse.Namespace,
+):
     """Run side-by-side comparison of base vs. fine-tuned model outputs.
 
     Generates responses from both models for each prompt and displays them
@@ -327,29 +351,25 @@ def run_compare_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, st
 
     Args:
         base_model: The base pretrained model.
+        ft_model: PEFT-wrapped model with the LoRA adapter already loaded.
         tokenizer: The model tokenizer.
         test_prompts: List of test prompt message lists.
-        args: Parsed CLI arguments with adapter_path and generation parameters.
+        args: Parsed CLI arguments with generation parameters.
     """
     print("Comparing BASE vs FINE-TUNED model...")
-    resolved_path = resolve_adapter_path(args.adapter_path)
-
-    base_results = []
-    for messages in test_prompts:
-        base_results.append(
-            generate_response(
-                base_model, tokenizer, messages,
-                args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
-            )
-        )
-
-    ft_model = PeftModel.from_pretrained(base_model, resolved_path)
     for i, messages in enumerate(test_prompts):
         print(f"\n{'=' * 60}")
-        print(f"Prompt {i + 1}: {messages[-1]['content'][:80]}...")
+        prompt_preview = messages[-1]["content"]
+        if len(prompt_preview) > 80:
+            prompt_preview = f"{prompt_preview[:80]}..."
+        print(f"Prompt {i + 1}: {prompt_preview}")
 
         print("\n--- Base model response ---")
-        print(base_results[i])
+        base_response = generate_response(
+            base_model, tokenizer, messages,
+            args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
+        )
+        print(base_response)
 
         print("\n--- Fine-tuned model response ---")
         ft_response = generate_response(
@@ -357,6 +377,62 @@ def run_compare_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, st
             args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
         )
         print(ft_response)
+
+
+def run_interactive_loop(
+    mode: str,
+    base_model,
+    tokenizer,
+    args: argparse.Namespace,
+    ft_model=None,
+) -> None:
+    """Read prompts from stdin and generate responses until the user exits.
+
+    Args:
+        mode: Inference mode (base, finetuned, or compare).
+        base_model: The base pretrained model.
+        tokenizer: The model tokenizer.
+        args: Parsed CLI arguments with generation parameters.
+        ft_model: PEFT-wrapped fine-tuned model; required for finetuned/compare.
+    """
+    print("\nInteractive mode. Enter prompts below (quit / exit / q to stop):")
+    gen_kwargs = (
+        args.use_thinking,
+        args.max_new_tokens,
+        args.temperature,
+        args.top_p,
+    )
+
+    while True:
+        try:
+            user_input = input("\nYou: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in EXIT_COMMANDS:
+            break
+
+        messages = [{"role": "user", "content": user_input}]
+
+        if mode == "base":
+            response = generate_response(base_model, tokenizer, messages, *gen_kwargs)
+            print(f"Response:\n{response}")
+        elif mode == "finetuned":
+            response = generate_response(ft_model, tokenizer, messages, *gen_kwargs)
+            print(f"Response:\n{response}")
+        elif mode == "compare":
+            print("\n--- Base model response ---")
+            base_response = generate_response(
+                base_model, tokenizer, messages, *gen_kwargs,
+            )
+            print(base_response)
+
+            print("\n--- Fine-tuned model response ---")
+            ft_response = generate_response(ft_model, tokenizer, messages, *gen_kwargs)
+            print(ft_response)
 
 
 def main():
@@ -367,14 +443,24 @@ def main():
         args.model_id, load_in_4bit, compute_dtype, device_map,
     )
 
+    ft_model = None
+    if args.mode in ("finetuned", "compare"):
+        resolved_path = resolve_adapter_path(args.adapter_path)
+        print(f"Loading LoRA adapter from {resolved_path}...")
+        ft_model = PeftModel.from_pretrained(base_model, resolved_path)
+
     test_prompts = build_test_prompts(args)
 
-    if args.mode == "base":
-        run_base_mode(base_model, tokenizer, test_prompts, args)
-    elif args.mode == "finetuned":
-        run_finetuned_mode(base_model, tokenizer, test_prompts, args)
-    elif args.mode == "compare":
-        run_compare_mode(base_model, tokenizer, test_prompts, args)
+    if test_prompts:
+        if args.mode == "base":
+            run_base_mode(base_model, tokenizer, test_prompts, args)
+        elif args.mode == "finetuned":
+            run_finetuned_mode(ft_model, tokenizer, test_prompts, args)
+        elif args.mode == "compare":
+            run_compare_mode(base_model, ft_model, tokenizer, test_prompts, args)
+
+    if not args.no_interactive:
+        run_interactive_loop(args.mode, base_model, tokenizer, args, ft_model=ft_model)
 
 
 if __name__ == "__main__":
