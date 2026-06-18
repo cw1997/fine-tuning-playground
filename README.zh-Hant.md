@@ -21,9 +21,8 @@
   - [基本訓練](#基本訓練)
   - [使用 Alpaca 資料集訓練](#使用-alpaca-資料集訓練)
   - [從 Hugging Face Hub 載入資料集](#從-hugging-face-hub-載入資料集)
-  - [推論 — 微調前（基底模型）](#推論-微調前基底模型)
-  - [推論 — 微調後](#推論-微調後)
-  - [推論 — 對比微調前後](#推論-對比微調前後)
+  - [推論 — 互動式（預設）](#推論-互動式預設)
+  - [推論 — 單次執行（--no_interactive）](#推論-單次執行no_interactive)
   - [啟用思考模式推論](#啟用思考模式推論)
 - [進階用法](#進階用法)
   - [自訂 LoRA 目標模組](#自訂-lora-目標模組)
@@ -59,6 +58,7 @@
 - **CPU 備援** — 若無 CUDA，訓練與推論會自動改以 CPU 全精度執行（速度極慢，僅建議用於冒煙測試）。
 - **單檔訓練腳本** — `src/train.py` 由上而下執行完整 SFT 流程，適合講解微調各步驟。
 - **微調前後對比** — 可先測試微調前的基底模型，再與微調後的模型進行逐題對比，量化改善幅度。
+- **互動式推論** — `src/inference.py` 預設在載入模型後進入提示詞輸入迴圈；使用 `--no_interactive` 可改為單次批次推論後退出。
 - **評估資料分割** — 自動將資料集分割為訓練集與測試集，並根據評估損失選取最佳模型。
 - **梯度檢查點** — 預設啟用，可降低訓練過程中的記憶體使用量。
 
@@ -157,10 +157,13 @@ python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
 
 # 6. 以基底模型推論（微調前）— 儲存輸出以便對比
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 7. 以微調後模型推論 — 與步驟 6 對比
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# 8. 以微調後模型進行互動式對話（輸入 quit 退出）
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
 ```
 
 詳細訓練選項與資料格式請見[使用方式](#使用方式)。
@@ -174,7 +177,7 @@ fine-tuning-playground/
 ├── requirements.txt          # Python 套件依賴列表
 ├── src/                      # 原始碼腳本
 │   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
-│   └── inference.py          # 微調前/後推論 + 對比功能
+│   └── inference.py          # 互動式推論 + 微調前/後/對比模式
 ├── data/                     # 訓練資料集與產生器
 │   ├── ntnu_dataset.jsonl    # 內附臺師大 ChatML 資料集（161 筆）
 │   ├── generate_ntnu_dataset.py
@@ -189,7 +192,7 @@ fine-tuning-playground/
 
 **`src/train.py`** — 完整的監督式微調流程，全部寫在一個檔案中。依序執行：SSL 修復 → 解析命令列參數 → 偵測裝置 → 載入分詞器 → 載入基座模型（可選 4-bit）→ 套用 LoRA → 載入並格式化資料集 → 設定 `SFTTrainer` → 訓練 → 儲存適配器。所有超參數皆為 CLI 旗標，無獨立設定模組。
 
-**`src/inference.py`** — 獨立推論腳本，支援基底模型、微調後模型或並排對比。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--load_in_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`。
+**`src/inference.py`** — 獨立推論腳本，支援基底模型、微調後模型或並排對比。預設在載入模型後進入互動式提示詞迴圈（`You:` 提示；輸入 `quit` / `exit` / `q` 退出）。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--no_interactive`、`--load_in_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`、`--device`、`--torch_dtype`。
 
 **`data/`** — 包含內附的 `ntnu_dataset.jsonl`（161 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`ntnu_extended_records.py`）。
 
@@ -227,8 +230,9 @@ fine-tuning-playground/
 | | `temperature` | `0.7` | 取樣溫度 |
 | | `top_p` | `0.9` | 核取樣（nucleus sampling）閾值 |
 | | `use_thinking` | `False` | 啟用思考模式 |
+| | `no_interactive` | `False` | 批次推論後直接退出，不進入互動迴圈 |
 
-> **備註：** `src/train.py` 的 `--model_id` 預設為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`。`src/inference.py` 的 `--model_id` 預設為 `Qwen/Qwen3-4B` — 推論時請明確指定與微調時相同的模型。
+> **備註：** `src/train.py` 的 `--model_id` 預設為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`。`src/inference.py` 的 `--model_id` 預設為 `Qwen/Qwen3-4B` — 推論時請明確指定與微調時相同的模型。在 `src/inference.py` 中，省略 `--prompt` 會跳過批次測試並直接進入互動迴圈；搭配 `--no_interactive` 且未提供 `--prompt` 時，會使用兩條內建的 NTNU 測試提示。
 
 ---
 
@@ -324,39 +328,55 @@ python src/train.py \
     --output_dir ./dolly-finetuned
 ```
 
-### 推論 — 微調前（基底模型）
+### 推論 — 互動式（預設）
 
-測試微調前的原始模型，建立基準線：
+`src/inference.py` 預設在載入模型後進入互動式提示詞迴圈。在 `You:` 提示後輸入問題；輸入 `quit`、`exit` 或 `q`（或按 Ctrl+C）即可退出。
+
+- **未提供 `--prompt`**：跳過批次測試，直接進入輸入迴圈。
+- **有 `--prompt`**：先執行該提示一輪，再繼續互動輸入。
 
 ```bash
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "請介紹國立臺灣師範大學。"
+# 微調後模型 — 互動式對話
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+
+# 基底模型 — 先跑一條提示，再繼續互動
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+    --prompt "台灣師范大學的地址是什麼"
+
+# 對比模式 — 每輪輸入同時顯示基底與微調後回應
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
 ```
 
-### 推論 — 微調後
+### 推論 — 單次執行（`--no_interactive`）
 
-載入微調後的 LoRA 適配器並生成回應（`--model_id` 須與訓練時一致）：
-
-```bash
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model --prompt "請介紹國立臺灣師範大學。"
-```
-
-### 推論 — 對比微調前後
-
-用**同一組提示**分別餵給兩個模型，觀察微調帶來的改善：
+適用於腳本、CI 或快速基準對比：傳入 `--no_interactive` 可執行一次批次推論後退出。未提供 `--prompt` 時，會使用兩條內建的 NTNU 測試提示。
 
 ```bash
-python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model
+# 基底模型基準線（微調前）
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+    --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# 微調後模型
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./my-finetuned-model \
+    --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# 並排對比（批次模式，使用內建測試提示）
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/my-finetuned-model --no_interactive
 ```
 
 ### 啟用思考模式推論
 
-若要啟用 Qwen3 的連鎖思考（chain-of-thought）推理，請傳入 `--use_thinking True`：
+若要啟用 Qwen3 的連鎖思考（chain-of-thought）推理，請傳入 `--use_thinking True`。除非同時傳入 `--no_interactive`，否則在執行 `--prompt` 後會繼續進入互動迴圈。
 
 ```bash
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --adapter_path ./my-finetuned-model \
     --use_thinking True \
-    --prompt "請問「strawberry」這個字有幾個 r？"
+    --prompt "台灣師范大學的地址是什麼"
 ```
 
 ---
@@ -457,6 +477,8 @@ my-finetuned-model/
 7. **資料品質重於數量**：對於指令微調而言，500–1000 筆高品質的乾淨資料集通常勝過 10,000 筆雜訊資料。
 
 8. **推論時須對應 `model_id`**：`src/inference.py` 使用的基底模型（`--model_id`）必須與微調時的模型一致。
+
+9. **互動式與單次推論**：手動探索時使用預設的互動迴圈；需要單次批次執行時（例如快速開始的步驟 6–7 或 shell 腳本）請加上 `--no_interactive`。
 
 ---
 

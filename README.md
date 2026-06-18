@@ -27,9 +27,8 @@ A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3
     - [Basic Training](#basic-training)
     - [Training with Alpaca Dataset](#training-with-alpaca-dataset)
     - [Training from Hugging Face Hub](#training-from-hugging-face-hub)
-    - [Inference — Pre Fine-Tuning (Base Model)](#inference--pre-fine-tuning-base-model)
-    - [Inference — Post Fine-Tuning](#inference--post-fine-tuning)
-    - [Inference — Compare Base vs Fine-Tuned](#inference--compare-base-vs-fine-tuned)
+    - [Inference — Interactive (Default)](#inference--interactive-default)
+    - [Inference — One-Shot (`--no_interactive`)](#inference--one-shot---no_interactive)
     - [Inference with Thinking Mode](#inference-with-thinking-mode)
   - [Advanced Usage](#advanced-usage)
     - [Custom LoRA Target Modules](#custom-lora-target-modules)
@@ -65,6 +64,7 @@ This project provides a complete fine-tuning pipeline that lets you adapt these 
 - **CPU fallback** — when CUDA is unavailable, training and inference automatically fall back to full-precision CPU (slow; intended for smoke tests).
 - **Single-file training script** — `src/train.py` runs the full SFT pipeline sequentially, ideal for walking through each step when teaching fine-tuning.
 - **Pre / post fine-tuning comparison** — test the base model before fine-tuning, then compare responses side by side with the fine-tuned model to measure improvement.
+- **Interactive inference** — `src/inference.py` keeps the model loaded and accepts prompts in a loop by default; use `--no_interactive` for one-shot batch runs.
 - **Evaluation split** — automatic train/test split with best-model selection based on eval loss.
 - **Gradient checkpointing** — enabled by default to reduce memory usage during training.
 
@@ -170,10 +170,13 @@ python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# 8. Interactive chat with the fine-tuned model (type quit to exit)
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
 ```
 
 See the [Usage](#usage) section for detailed training options and dataset formats.
@@ -187,7 +190,7 @@ fine-tuning-playground/
 ├── requirements.txt          # Python package dependencies
 ├── src/                      # Source scripts
 │   ├── train.py              # Full SFT pipeline (single file, top-to-bottom)
-│   └── inference.py          # Base & fine-tuned model inference + comparison
+│   └── inference.py          # Interactive inference + base/finetuned/compare modes
 ├── data/                     # Training datasets and generators
 │   ├── ntnu_dataset.jsonl    # Bundled NTNU ChatML dataset (161 examples)
 │   ├── generate_ntnu_dataset.py
@@ -202,7 +205,7 @@ fine-tuning-playground/
 
 **`src/train.py`** — The complete supervised fine-tuning pipeline in one file. Runs sequentially: SSL fix → parse CLI args → detect device → load tokenizer → load base model (optional 4-bit) → apply LoRA → load & format dataset → configure `SFTTrainer` → train → save adapter. All hyperparameters are CLI flags; no separate config module.
 
-**`src/inference.py`** — Standalone inference script for base model, fine-tuned model, or side-by-side comparison. CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--load_in_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`.
+**`src/inference.py`** — Standalone inference script for base model, fine-tuned model, or side-by-side comparison. By default, enters an interactive prompt loop after loading (`You:` prompt; type `quit` / `exit` / `q` to stop). CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--no_interactive`, `--load_in_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`, `--device`, `--torch_dtype`.
 
 **`data/`** — Contains the bundled `ntnu_dataset.jsonl` (161 ChatML records about National Taiwan Normal University) and scripts to regenerate it (`generate_ntnu_dataset.py`, `ntnu_extended_records.py`).
 
@@ -240,8 +243,9 @@ All training hyperparameters are CLI flags in `src/train.py`. Below is a complet
 | | `temperature` | `0.7` | Sampling temperature |
 | | `top_p` | `0.9` | Nucleus sampling threshold |
 | | `use_thinking` | `False` | Enable thinking mode in chat template |
+| | `no_interactive` | `False` | Exit after batch inference instead of entering the prompt loop |
 
-> **Note:** `--model_id` defaults to `Qwen/Qwen3.5-0.8B` in `src/train.py` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. `src/inference.py` defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned.
+> **Note:** `--model_id` defaults to `Qwen/Qwen3.5-0.8B` in `src/train.py` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. `src/inference.py` defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned. In `src/inference.py`, omitting `--prompt` skips batch tests and goes straight to the interactive loop; with `--no_interactive` and no `--prompt`, two built-in NTNU test prompts are used.
 
 ---
 
@@ -337,39 +341,55 @@ python src/train.py \
     --output_dir ./dolly-finetuned
 ```
 
-### Inference — Pre Fine-Tuning (Base Model)
+### Inference — Interactive (Default)
 
-Test the original model **before** fine-tuning to establish a baseline:
+By default, `src/inference.py` keeps the model loaded and enters an interactive prompt loop. Type your question at the `You:` prompt; enter `quit`, `exit`, or `q` (or press Ctrl+C) to exit.
+
+- **No `--prompt`**: skips batch tests and goes straight to the input loop.
+- **With `--prompt`**: runs that prompt once, then continues interactively.
 
 ```bash
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Tell me about NTNU."
+# Fine-tuned model — interactive chat
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+
+# Base model — run one prompt, then continue interactively
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+    --prompt "台灣師范大學的地址是什麼"
+
+# Compare mode — each input shows base vs fine-tuned responses
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
 ```
 
-### Inference — Post Fine-Tuning
+### Inference — One-Shot (`--no_interactive`)
 
-After training, load the fine-tuned LoRA adapter and generate responses (use the same `--model_id` as during training):
-
-```bash
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model --prompt "Tell me about NTNU."
-```
-
-### Inference — Compare Base vs Fine-Tuned
-
-Run the **same prompts** through both models side by side to see what fine-tuning improved:
+For scripts, CI, or quick baseline comparisons, pass `--no_interactive` to run batch inference once and exit. Without `--prompt`, two built-in NTNU test prompts are used.
 
 ```bash
-python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./models/my-finetuned-model
+# Base model baseline (before fine-tuning)
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+    --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# Fine-tuned model (after training)
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./my-finetuned-model \
+    --prompt "台灣師范大學的地址是什麼" --no_interactive
+
+# Side-by-side comparison (batch mode, built-in test prompts)
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./models/my-finetuned-model --no_interactive
 ```
 
 ### Inference with Thinking Mode
 
-To enable Qwen3's chain-of-thought reasoning, pass `--use_thinking True`:
+To enable Qwen3's chain-of-thought reasoning, pass `--use_thinking True`. Unless `--no_interactive` is set, the script continues to the interactive loop after the initial `--prompt` run.
 
 ```bash
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --adapter_path ./my-finetuned-model \
     --use_thinking True \
-    --prompt "How many r's are in the word 'strawberry'?"
+    --prompt "台灣師范大學的地址是什麼"
 ```
 
 ---
@@ -470,6 +490,8 @@ The adapter is only ~40–80 MB, making it easy to share and version.
 7. **Data quality matters**: A clean dataset of 500–1000 high-quality examples often outperforms a noisy dataset of 10,000 examples for instruction tuning.
 
 8. **Match `model_id` at inference**: The base model used in `src/inference.py` (`--model_id`) must match the model you fine-tuned.
+
+9. **Interactive vs one-shot inference**: Use the default interactive loop for manual exploration. Add `--no_interactive` when you need a single batch run (e.g., Quick Start steps 6–7 or shell scripts).
 
 ---
 
