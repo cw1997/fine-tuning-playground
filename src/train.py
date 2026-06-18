@@ -11,7 +11,6 @@ Usage:
 """
 
 import os
-import warnings
 from pathlib import Path
 
 from model_utils import (
@@ -23,11 +22,6 @@ from model_utils import (
 )
 
 fix_ssl_certificates(verbose=True)
-
-# Suppress FutureWarning from torch._check_is_size (to be removed in future PyTorch)
-warnings.filterwarnings("ignore", message=".*_check_is_size.*")
-# Suppress Triton FLOP counter warning on systems without Triton
-warnings.filterwarnings("ignore", message=".*triton not found.*")
 
 import argparse
 import json
