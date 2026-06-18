@@ -370,8 +370,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Global references used across functions for simplicity in a single-file script
-    tokenizer = None
-    model = None
-    train_dataset = None
     main()
