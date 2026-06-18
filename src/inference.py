@@ -18,7 +18,6 @@ Usage:
 """
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -37,13 +36,6 @@ fix_ssl_certificates()
 
 ADAPTER_CONFIG_NAME = "adapter_config.json"
 EXIT_COMMANDS = frozenset({"quit", "exit", "q"})
-
-
-def configure_stdio_utf8() -> None:
-    """Reconfigure stdout/stderr to UTF-8 on Windows for Chinese output."""
-    if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,6 +78,12 @@ def parse_args() -> argparse.Namespace:
 
     if args.mode in ("finetuned", "compare") and args.adapter_path is None:
         parser.error("--adapter_path is required in finetuned / compare mode.")
+
+    if args.no_interactive and (not args.prompt or not args.prompt.strip()):
+        parser.error(
+            "A valid --prompt is required when using --no_interactive. "
+            "Please provide a non-empty prompt."
+        )
 
     return args
 
@@ -202,30 +200,6 @@ def generate_response(
 
     generated_ids = outputs[0][input_length:]
     return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-
-
-def build_test_prompts(args: argparse.Namespace) -> List[List[Dict[str, str]]]:
-    """Build a list of batch test prompts from CLI args or defaults.
-
-    If --prompt is provided, a single-turn conversation is created.
-    In interactive mode (default), an empty list is returned when --prompt
-    is omitted so the script goes straight to the input loop.
-    With --no_interactive and no --prompt, default NTNU test prompts are used.
-
-    Args:
-        args: Parsed CLI arguments.
-
-    Returns:
-        List of message lists, each suitable for tokenizer.apply_chat_template.
-    """
-    if args.prompt:
-        return [[{"role": "user", "content": args.prompt}]]
-    if args.no_interactive:
-        return [
-            [{"role": "user", "content": "Tell me about National Taiwan Normal University."}],
-            [{"role": "user", "content": "What is the history of NTNU?"}],
-        ]
-    return []
 
 
 def _generation_kwargs(args: argparse.Namespace) -> tuple:
@@ -350,7 +324,6 @@ def run_interactive_loop(
 
 def main():
     """Orchestrate the full inference pipeline: parse args, load model, and run the selected mode."""
-    configure_stdio_utf8()
     args = parse_args()
     device_map, _, load_in_4bit, compute_dtype = resolve_device(args)
     base_model, tokenizer = load_base_model_and_tokenizer(
@@ -363,9 +336,8 @@ def main():
         print(f"Loading LoRA adapter from {resolved_path}...")
         ft_model = PeftModel.from_pretrained(base_model, resolved_path)
 
-    test_prompts = build_test_prompts(args)
-
-    if test_prompts:
+    if args.prompt and args.prompt.strip():
+        test_prompts = [[{"role": "user", "content": args.prompt.strip()}]]
         if args.mode == "base":
             run_batch_mode(base_model, tokenizer, "BASE", test_prompts, args)
         elif args.mode == "finetuned":
