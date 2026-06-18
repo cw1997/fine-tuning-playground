@@ -1,6 +1,6 @@
 # Fine-Tuning Playground
 
-A production-ready, modular codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3.5** decoder-only models (e.g. **Qwen3-4B**, **Qwen3.5-4B**) using **QLoRA / LoRA**. Built with Hugging Face `transformers`, `peft`, `trl`, and `bitsandbytes`, this project provides a clean CLI interface and reusable Python modules that can be adapted to other Qwen-family LLMs with minimal changes.
+A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3.5** decoder-only models (e.g. **Qwen3-4B**, **Qwen3.5-4B**) using **QLoRA / LoRA**. Built with Hugging Face `transformers`, `peft`, `trl`, and `bitsandbytes`, the entire training pipeline lives in a single top-to-bottom script (`src/train.py`) with all settings passed as CLI flags.
 
 ---
 
@@ -63,7 +63,7 @@ This project provides a complete fine-tuning pipeline that lets you adapt these 
 - **Thinking mode** — optionally enable Qwen3's `<think>` reasoning tags during training and inference.
 - **CLI-first design** — all hyperparameters configurable via command-line flags; no YAML files needed.
 - **CPU fallback** — when CUDA is unavailable, training and inference automatically fall back to full-precision CPU (slow; intended for smoke tests).
-- **Modular Python API** — import individual modules (`config`, `data_utils`, `model_utils`, `train`, `inference`, `env_utils`) for programmatic use.
+- **Single-file training script** — `src/train.py` runs the full SFT pipeline sequentially, ideal for walking through each step when teaching fine-tuning.
 - **Pre / post fine-tuning comparison** — test the base model before fine-tuning, then compare responses side by side with the fine-tuned model to measure improvement.
 - **Evaluation split** — automatic train/test split with best-model selection based on eval loss.
 - **Gradient checkpointing** — enabled by default to reduce memory usage during training.
@@ -167,13 +167,13 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. Run training with the bundled NTNU dataset (161 ChatML examples)
-python run_sft.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
+python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
-python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
 ```
 
 See the [Usage](#usage) section for detailed training options and dataset formats.
@@ -185,57 +185,43 @@ See the [Usage](#usage) section for detailed training options and dataset format
 ```
 fine-tuning-playground/
 ├── requirements.txt          # Python package dependencies
-├── config.py                 # FinetuneConfig dataclass with all hyperparameters
-├── env_utils.py              # SSL certificate env fix for Hub downloads
+├── src/                      # Source scripts
+│   ├── train.py              # Full SFT pipeline (single file, top-to-bottom)
+│   └── inference.py          # Base & fine-tuned model inference + comparison
 ├── data/                     # Training datasets and generators
 │   ├── ntnu_dataset.jsonl    # Bundled NTNU ChatML dataset (161 examples)
 │   ├── generate_ntnu_dataset.py
 │   └── ntnu_extended_records.py
 ├── models/                   # Fine-tuned LoRA adapters (gitignored)
 ├── scripts/                  # install_deps.sh / install_deps.ps1
-├── data_utils.py             # Dataset loading (hub & local) + ChatML formatting
-├── model_utils.py            # Tokenizer loading, 4-bit quantization, LoRA setup
-├── train.py                  # SFTTrainer training pipeline
-├── inference.py              # Base & fine-tuned model inference + comparison
-├── run_sft.py                # CLI entry point (argparse)
 ├── README.md                 # This file
 └── README.zh-Hant.md         # Traditional Chinese documentation
 ```
 
 ### File Descriptions
 
-**`config.py`** — Defines `FinetuneConfig`, a Python dataclass grouping all hyperparameters into logical sections: model settings, LoRA settings, data settings, training settings, hub settings, and inference settings. Includes a `from_args()` classmethod that converts `argparse.Namespace` into the config object.
+**`src/train.py`** — The complete supervised fine-tuning pipeline in one file. Runs sequentially: SSL fix → parse CLI args → detect device → load tokenizer → load base model (optional 4-bit) → apply LoRA → load & format dataset → configure `SFTTrainer` → train → save adapter. All hyperparameters are CLI flags; no separate config module.
 
-**`data_utils.py`** — Three data-loading paths (`load_dataset_from_hub`, `load_dataset_from_json`) and format converters (`convert_to_chat_format`) that normalize Alpaca, text, and ChatML formats into the unified message list expected by `tokenizer.apply_chat_template`.
-
-**`model_utils.py`** — Handles the Heavy lifting of model preparation: `load_tokenizer` (with pad_token fix), `load_quantized_model` (with optional BitsAndBytes 4-bit config), `setup_lora_config` (targeting all 7 linear layers), and `print_trainable_params` for debugging.
-
-**`train.py`** — The core training orchestration. Loads model and data, wraps with LoRA, configures `SFTTrainer` with gradient checkpointing and eval loop, then saves the adapter + tokenizer. Supports optional push to Hugging Face Hub.
-
-**`env_utils.py`** — Fixes broken `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` environment variables (common on Windows conda) by redirecting to certifi's CA bundle. Called automatically at startup by `run_sft.py` and `inference.py`.
+**`src/inference.py`** — Standalone inference script for base model, fine-tuned model, or side-by-side comparison. CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--load_in_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`.
 
 **`data/`** — Contains the bundled `ntnu_dataset.jsonl` (161 ChatML records about National Taiwan Normal University) and scripts to regenerate it (`generate_ntnu_dataset.py`, `ntnu_extended_records.py`).
-
-**`run_sft.py`** — CLI script using `argparse`. Most `FinetuneConfig` fields are exposed as command-line flags with sensible defaults. `--dataset_path` is required. Aliases: `--lr` / `--learning_rate`, `--epochs` / `--num_epochs`, `--batch_size` / `--per_device_batch_size`. This is the recommended entry point for most users.
-
-**`inference.py`** — Standalone inference module for both pre and post fine-tuning. `load_base_model` loads the base Qwen3 model without any adapter. `load_finetuned_model` loads the base model + saved LoRA adapter (with `resolve_adapter_path` to auto-pick the latest `checkpoint-*` folder). `generate_response` applies the chat template, generates tokens, and decodes the result. `extract_thinking` parses `<think>...</think>` blocks when thinking mode is enabled. `compare_responses` loads both models and runs side-by-side comparison on the same prompts. CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--use_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`.
 
 ---
 
 ## Configuration
 
-All hyperparameters are defined in `FinetuneConfig` (`config.py`). Below is a complete reference:
+All training hyperparameters are CLI flags in `src/train.py`. Below is a complete reference:
 
 | Category | Parameter | Default | Description |
 |---|---|---|---|
-| **Model** | `model_id` | `Qwen/Qwen3.5-4B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` on GPU) |
+| **Model** | `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` on GPU) |
 | | `load_in_4bit` | `True` | Enable 4-bit NF4 quantization (auto-disabled on CPU) |
 | | `torch_dtype` | `bfloat16` | Computation dtype (falls back to `float32` on CPU) |
 | **LoRA** | `lora_r` | `16` | LoRA rank |
 | | `lora_alpha` | `32` | LoRA scaling factor (commonly 2 * r) |
 | | `lora_dropout` | `0.05` | Dropout for LoRA layers |
-| | `target_modules` | All 7 linear layers | Modules to attach adapters to (set via `FinetuneConfig`, not CLI) |
-| **Data** | `dataset_path` | _(required)_ | Local file or HF dataset name |
+| | `target_modules` | All 7 linear layers | Comma-separated module names (e.g. `q_proj,k_proj,v_proj,o_proj`) |
+| **Data** | `dataset_path` | _(required)_ | Local file or HF dataset name (local paths must start with `./`, `.`, or `/`) |
 | | `dataset_format` | `chat` | Input format: chat, alpaca, or text |
 | | `test_split` | `0.05` | Fraction for evaluation (0 = no eval) |
 | | `max_seq_length` | `4096` | Max token length for each example |
@@ -255,7 +241,7 @@ All hyperparameters are defined in `FinetuneConfig` (`config.py`). Below is a co
 | | `top_p` | `0.9` | Nucleus sampling threshold |
 | | `use_thinking` | `False` | Enable thinking mode in chat template |
 
-> **Note:** `FinetuneConfig.model_id` defaults to `Qwen/Qwen3.5-4B` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. The `inference.py` CLI defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned.
+> **Note:** `--model_id` defaults to `Qwen/Qwen3.5-0.8B` in `src/train.py` (suitable for CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`. `src/inference.py` defaults `--model_id` to `Qwen/Qwen3-4B` — always set it explicitly to match the model you fine-tuned.
 
 ---
 
@@ -322,7 +308,7 @@ This format requires `--dataset_format text`.
 Train on a local JSONL file where each line is a ChatML-formatted conversation:
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --model_id Qwen/Qwen3.5-4B \
     --dataset_path ./data/my_dataset.jsonl \
     --output_dir ./my-finetuned-model
@@ -331,7 +317,7 @@ python run_sft.py \
 ### Training with Alpaca Dataset
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/alpaca_data.json \
     --dataset_format alpaca \
     --lr 2e-4 \
@@ -344,7 +330,7 @@ python run_sft.py \
 Load a dataset directly from the Hugging Face Hub:
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path databricks/databricks-dolly-15k \
     --dataset_format alpaca \
     --max_seq_length 2048 \
@@ -353,119 +339,37 @@ python run_sft.py \
 
 ### Inference — Pre Fine-Tuning (Base Model)
 
-Test the original Qwen3-4B model **before** fine-tuning to establish a baseline:
-
-```python
-from inference import load_base_model, generate_response
-
-# Load the base model without any adapter
-model, tokenizer = load_base_model(
-    base_model_id="Qwen/Qwen3.5-4B",
-    use_4bit=True,
-)
-
-messages = [{"role": "user", "content": "Tell me about National Taiwan Normal University."}]
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=messages,
-    max_new_tokens=1024,
-    temperature=0.7,
-    top_p=0.9,
-)
-
-print(response)
-```
-
-Or via CLI:
+Test the original model **before** fine-tuning to establish a baseline:
 
 ```bash
-python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Tell me about NTNU."
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Tell me about NTNU."
 ```
 
 ### Inference — Post Fine-Tuning
 
-After training, load the fine-tuned LoRA adapter and generate responses:
-
-```python
-from inference import load_finetuned_model, generate_response
-
-model, tokenizer = load_finetuned_model(
-    base_model_id="Qwen/Qwen3.5-4B",
-    adapter_path="./models/my-finetuned-model",
-    use_4bit=True,
-)
-
-messages = [{"role": "user", "content": "Tell me about National Taiwan Normal University."}]
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=messages,
-    max_new_tokens=1024,
-    temperature=0.7,
-    top_p=0.9,
-)
-
-print(response)
-```
-
-Or via CLI (use the same `--model_id` as during training):
+After training, load the fine-tuned LoRA adapter and generate responses (use the same `--model_id` as during training):
 
 ```bash
-python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model --prompt "Tell me about NTNU."
 ```
 
 ### Inference — Compare Base vs Fine-Tuned
 
 Run the **same prompts** through both models side by side to see what fine-tuning improved:
 
-```python
-from inference import compare_responses
-
-results = compare_responses(
-    base_model_id="Qwen/Qwen3.5-4B",
-    adapter_path="./models/my-finetuned-model",
-    test_prompts=[
-        [{"role": "user", "content": "Tell me about National Taiwan Normal University."}],
-        [{"role": "user", "content": "What is the history of NTNU?"}],
-    ],
-    use_4bit=True,
-)
-```
-
-Or via CLI:
-
 ```bash
-python inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./models/my-finetuned-model
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./models/my-finetuned-model
 ```
 
 ### Inference with Thinking Mode
 
-To enable Qwen3's chain-of-thought reasoning, set `enable_thinking=True`:
+To enable Qwen3's chain-of-thought reasoning, pass `--use_thinking True`:
 
-```python
-from inference import load_finetuned_model, generate_response, extract_thinking
-
-model, tokenizer = load_finetuned_model("Qwen/Qwen3.5-4B", "./my-finetuned-model")
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=[{"role": "user", "content": "How many r's are in the word 'strawberry'?"}],
-    enable_thinking=True,
-)
-
-# Extract the reasoning trace and the final answer
-thinking, answer = extract_thinking(response)
-if thinking:
-    print("=== Thinking ===")
-    print(thinking)
-    print("=== Answer ===")
-    print(answer)
-else:
-    print(response)
+```bash
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./my-finetuned-model \
+    --use_thinking True \
+    --prompt "How many r's are in the word 'strawberry'?"
 ```
 
 ---
@@ -474,19 +378,14 @@ else:
 
 ### Custom LoRA Target Modules
 
-By default, LoRA is applied to all 7 linear projection layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`. You can restrict to attention-only modules to save memory by passing `target_modules` through the Python API (`run_sft.py` does not expose this flag):
+By default, LoRA is applied to all 7 linear projection layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`. You can restrict to attention-only modules to save memory:
 
-```python
-from config import FinetuneConfig
-from train import train
-
-cfg = FinetuneConfig(
-    dataset_path="./data/train.jsonl",
-    model_id="Qwen/Qwen3.5-4B",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    output_dir="./attention-only-lora",
-)
-train(cfg)
+```bash
+python src/train.py \
+    --dataset_path ./data/train.jsonl \
+    --model_id Qwen/Qwen3.5-4B \
+    --target_modules q_proj,k_proj,v_proj,o_proj \
+    --output_dir ./attention-only-lora
 ```
 
 ### Push to Hugging Face Hub
@@ -500,7 +399,7 @@ huggingface-cli login
 Then add the `--push_to_hub` and `--hub_model_id` flags:
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/train.jsonl \
     --output_dir ./my-adapter \
     --push_to_hub True \
@@ -512,7 +411,7 @@ python run_sft.py \
 QLoRA (4-bit) is the default and requires the least memory. To train in FP16 LoRA without quantization:
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/train.jsonl \
     --load_in_4bit False \
     --per_device_batch_size 1 \
@@ -526,7 +425,7 @@ This requires approximately 12 GB VRAM. Reduce `per_device_batch_size` or `max_s
 If your dataset includes reasoning traces (content wrapped in `<think>...</think>`), you can enable the thinking-aware chat template:
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/reasoning_dataset.jsonl \
     --use_thinking True \
     --output_dir ./thinking-finetuned
@@ -570,7 +469,7 @@ The adapter is only ~40–80 MB, making it easy to share and version.
 
 7. **Data quality matters**: A clean dataset of 500–1000 high-quality examples often outperforms a noisy dataset of 10,000 examples for instruction tuning.
 
-8. **Match `model_id` at inference**: The base model used in `inference.py` (`--model_id` or `base_model_id`) must match the model you fine-tuned.
+8. **Match `model_id` at inference**: The base model used in `src/inference.py` (`--model_id`) must match the model you fine-tuned.
 
 ---
 
@@ -583,10 +482,11 @@ The adapter is only ~40–80 MB, making it easy to share and version.
 | `OutOfMemoryError` | Batch size too large for your GPU | Reduce `--per_device_batch_size` or `--max_seq_length` |
 | `KeyError: 'qwen3'` | Transformers version too old | Upgrade to `transformers>=4.47.0` |
 | `bitsandbytes` import error | Missing CUDA or incompatible version | Ensure bitsandbytes matches your CUDA version: `pip install bitsandbytes --force-reinstall` |
-| Hub download / SSL errors | Broken `SSL_CERT_FILE` on conda/Windows | `env_utils.fix_ssl_cert_env()` runs automatically; or fix the env var manually |
+| Hub download / SSL errors | Broken `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` on conda/Windows | `src/train.py` and `src/inference.py` auto-fix at startup; or fix the env var manually |
 | Training loss is NaN | Learning rate too high or dtype issue | Lower `--lr` or switch to `--torch_dtype bfloat16` |
 | Model repeats the same phrase | Overfitting or temperature too low | Increase `--temperature` or reduce `--epochs` |
 | `apply_chat_template` error | Data not in expected message format | Check that your dataset uses the correct format (see [Data Formats](#data-formats)) |
+| Local file loaded from Hub by mistake | `dataset_path` missing `./` prefix | Use `./data/train.jsonl` instead of `data/train.jsonl` for local files |
 | Eval loss increases during training | Overfitting | Reduce `--epochs`, increase `--test_split`, or add more training data |
 | `LoRA adapter not found` | Wrong `--adapter_path` | Point to the output dir or a `checkpoint-*` subfolder; inference auto-picks the latest checkpoint |
 

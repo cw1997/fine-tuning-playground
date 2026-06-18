@@ -1,6 +1,6 @@
 # Fine-Tuning Playground — 微調遊樂場
 
-一套可直接用於生產環境的模組化程式碼，專為 **Qwen3 / Qwen3.5** 僅解碼器（decoder-only）模型（例如 **Qwen3-4B**、**Qwen3.5-4B**）的監督式微調（Supervised Fine-Tuning, SFT）而設計，採用 **QLoRA / LoRA** 技術。專案基於 Hugging Face 的生態系統建構，包含 `transformers`、`peft`、`trl` 與 `bitsandbytes`，提供簡潔的命令列介面與可重複使用的 Python 模組，並可輕鬆改寫以適用其他 Qwen 系列模型。
+一套面向教學的程式碼，專為 **Qwen3 / Qwen3.5** 僅解碼器（decoder-only）模型（例如 **Qwen3-4B**、**Qwen3.5-4B**）的監督式微調（Supervised Fine-Tuning, SFT）而設計，採用 **QLoRA / LoRA** 技術。專案基於 Hugging Face 的生態系統建構，完整訓練流程集中在單一腳本 `src/train.py` 中，由上而下順序執行，所有設定皆以命令列參數傳入。
 
 ---
 
@@ -57,7 +57,7 @@
 - **思考模式** — 可選擇在訓練與推論時啟用 Qwen3 的 `<think>` 推理標籤。
 - **命令列優先設計** — 所有超參數皆可透過命令列旗標設定，無需撰寫 YAML 設定檔。
 - **CPU 備援** — 若無 CUDA，訓練與推論會自動改以 CPU 全精度執行（速度極慢，僅建議用於冒煙測試）。
-- **模組化 Python API** — 可直接匯入各模組（`config`、`data_utils`、`model_utils`、`train`、`inference`、`env_utils`）進行程式化呼叫。
+- **單檔訓練腳本** — `src/train.py` 由上而下執行完整 SFT 流程，適合講解微調各步驟。
 - **微調前後對比** — 可先測試微調前的基底模型，再與微調後的模型進行逐題對比，量化改善幅度。
 - **評估資料分割** — 自動將資料集分割為訓練集與測試集，並根據評估損失選取最佳模型。
 - **梯度檢查點** — 預設啟用，可降低訓練過程中的記憶體使用量。
@@ -154,16 +154,13 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. 使用內附的臺師大資料集（161 筆 ChatML 範例）進行訓練
-python run_sft.py \
-    --model_id Qwen/Qwen3.5-4B \
-    --dataset_path ./data/ntnu_dataset.jsonl \
-    --output_dir ./models/ntnu-finetuned
+python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
 
 # 6. 以基底模型推論（微調前）— 儲存輸出以便對比
-python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "請介紹國立臺灣師範大學。"
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學校本部地址在哪？"
 
 # 7. 以微調後模型推論 — 與步驟 6 對比
-python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned --prompt "請介紹國立臺灣師範大學。"
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學校本部地址在哪？"
 ```
 
 詳細訓練選項與資料格式請見[使用方式](#使用方式)。
@@ -175,46 +172,32 @@ python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path .
 ```
 fine-tuning-playground/
 ├── requirements.txt          # Python 套件依賴列表
-├── config.py                 # FinetuneConfig 資料類別，包含所有超參數
-├── env_utils.py              # Hub 下載用的 SSL 憑證環境變數修復
+├── src/                      # 原始碼腳本
+│   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
+│   └── inference.py          # 微調前/後推論 + 對比功能
 ├── data/                     # 訓練資料集與產生器
 │   ├── ntnu_dataset.jsonl    # 內附臺師大 ChatML 資料集（161 筆）
 │   ├── generate_ntnu_dataset.py
 │   └── ntnu_extended_records.py
 ├── models/                   # 微調後的 LoRA 適配器（已加入 .gitignore）
 ├── scripts/                  # install_deps.sh / install_deps.ps1
-├── data_utils.py             # 資料集載入（Hub 與本機）+ ChatML 格式化
-├── model_utils.py            # 分詞器載入、4-bit 量化、LoRA 設定
-├── train.py                  # SFTTrainer 訓練流程
-├── inference.py              # 微調前/後推論 + 對比功能
-├── run_sft.py                # 命令列進入點（argparse）
 ├── README.md                 # 英文文件
 └── README.zh-Hant.md         # 本文件（繁體中文）
 ```
 
 ### 各檔案說明
 
-**`config.py`** — 定義 `FinetuneConfig`，一個將所有超參數分組的 Python 資料類別，包含模型設定、LoRA 設定、資料設定、訓練設定、Hub 設定與推論設定。內含 `from_args()` 類方法，可將 `argparse.Namespace` 轉換為設定物件。
+**`src/train.py`** — 完整的監督式微調流程，全部寫在一個檔案中。依序執行：SSL 修復 → 解析命令列參數 → 偵測裝置 → 載入分詞器 → 載入基座模型（可選 4-bit）→ 套用 LoRA → 載入並格式化資料集 → 設定 `SFTTrainer` → 訓練 → 儲存適配器。所有超參數皆為 CLI 旗標，無獨立設定模組。
 
-**`data_utils.py`** — 提供三種資料載入路徑（`load_dataset_from_hub`、`load_dataset_from_json`）與格式轉換器（`convert_to_chat_format`），可將 Alpaca、純文字與 ChatML 格式統一轉換為 `tokenizer.apply_chat_template` 所需的訊息列表。
-
-**`model_utils.py`** — 處理模型準備的核心工作：`load_tokenizer`（自動修正 pad_token）、`load_quantized_model`（可選的 BitsAndBytes 4-bit 設定）、`setup_lora_config`（預設鎖定全部 7 個線性層）、以及用於除錯的 `print_trainable_params`。
-
-**`train.py`** — 核心訓練協調模組。依序載入模型與資料、套用 LoRA、設定 `SFTTrainer`（含梯度檢查點與評估迴圈），最後儲存適配器與分詞器。支援選擇性推送到 Hugging Face Hub。
-
-**`env_utils.py`** — 修復損壞的 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` 環境變數（Windows conda 上常見），改指向 certifi 的 CA 憑證包。`run_sft.py` 與 `inference.py` 啟動時會自動呼叫。
+**`src/inference.py`** — 獨立推論腳本，支援基底模型、微調後模型或並排對比。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--load_in_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`。
 
 **`data/`** — 包含內附的 `ntnu_dataset.jsonl`（161 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`ntnu_extended_records.py`）。
-
-**`run_sft.py`** — 使用 `argparse` 的命令列腳本。大部分 `FinetuneConfig` 欄位皆對應為命令列旗標。`--dataset_path` 為必填。別名：`--lr` / `--learning_rate`、`--epochs` / `--num_epochs`、`--batch_size` / `--per_device_batch_size`。這是大多數使用者的建議進入點。
-
-**`inference.py`** — 獨立推論模組，同時支援微調前後的模型測試。`load_base_model` 載入未附加任何適配器的基底模型。`load_finetuned_model` 載入基底模型與已訓練的 LoRA 適配器（`resolve_adapter_path` 會自動選取最新的 `checkpoint-*` 目錄）。`generate_response` 套用對話模板、生成 tokens 並解碼結果。`extract_thinking` 可在啟用思考模式時解析 `<think>...</think>` 區塊。`compare_responses` 會同時載入兩個模型，對同一組提示進行並排對比。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--use_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`。
 
 ---
 
 ## 設定參數
 
-所有超參數皆定義於 `FinetuneConfig`（`config.py`）。以下是完整的參數參考表：
+所有訓練超參數皆為 `src/train.py` 的命令列旗標。以下是完整的參數參考表：
 
 | 類別 | 參數 | 預設值 | 說明 |
 |---|---|---|---|
@@ -224,8 +207,8 @@ fine-tuning-playground/
 | **LoRA** | `lora_r` | `16` | LoRA 秩（rank） |
 | | `lora_alpha` | `32` | LoRA 縮放因子（通常設為 2 * r） |
 | | `lora_dropout` | `0.05` | LoRA 層的 dropout 比率 |
-| | `target_modules` | 全部 7 個線性層 | 要附加適配器的模組（透過 `FinetuneConfig` 設定，CLI 無此旗標） |
-| **資料** | `dataset_path` | （必填） | 本機檔案路徑或 HF 資料集名稱 |
+| | `target_modules` | 全部 7 個線性層 | 逗號分隔的模組名稱（例如 `q_proj,k_proj,v_proj,o_proj`） |
+| **資料** | `dataset_path` | （必填） | 本機檔案路徑或 HF 資料集名稱（本機路徑須以 `./`、`.` 或 `/` 開頭） |
 | | `dataset_format` | `chat` | 輸入格式：chat、alpaca 或 text |
 | | `test_split` | `0.05` | 保留為評估集的比例（0 = 不評估） |
 | | `max_seq_length` | `4096` | 每個範例的最大 token 數 |
@@ -245,7 +228,7 @@ fine-tuning-playground/
 | | `top_p` | `0.9` | 核取樣（nucleus sampling）閾值 |
 | | `use_thinking` | `False` | 啟用思考模式 |
 
-> **備註：** `FinetuneConfig.model_id` 預設為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`。`inference.py` CLI 的 `--model_id` 預設為 `Qwen/Qwen3-4B` — 推論時請明確指定與微調時相同的模型。
+> **備註：** `src/train.py` 的 `--model_id` 預設為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`。`src/inference.py` 的 `--model_id` 預設為 `Qwen/Qwen3-4B` — 推論時請明確指定與微調時相同的模型。
 
 ---
 
@@ -312,7 +295,7 @@ Stanford Alpaca 格式使用三個欄位：`instruction`、`input` 與 `output`�
 使用本機 JSONL 檔案（每行一則 ChatML 格式的對話）進行訓練：
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --model_id Qwen/Qwen3.5-4B \
     --dataset_path ./data/my_dataset.jsonl \
     --output_dir ./my-finetuned-model
@@ -321,7 +304,7 @@ python run_sft.py \
 ### 使用 Alpaca 資料集訓練
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/alpaca_data.json \
     --dataset_format alpaca \
     --lr 2e-4 \
@@ -334,7 +317,7 @@ python run_sft.py \
 直接從 Hugging Face Hub 載入資料集：
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path databricks/databricks-dolly-15k \
     --dataset_format alpaca \
     --max_seq_length 2048 \
@@ -343,119 +326,37 @@ python run_sft.py \
 
 ### 推論 — 微調前（基底模型）
 
-測試微調前的原始 Qwen3-4B 模型，建立基準線：
-
-```python
-from inference import load_base_model, generate_response
-
-# 載入未附加任何適配器的基底模型
-model, tokenizer = load_base_model(
-    base_model_id="Qwen/Qwen3.5-4B",
-    use_4bit=True,
-)
-
-messages = [{"role": "user", "content": "請介紹國立臺灣師範大學。"}]
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=messages,
-    max_new_tokens=1024,
-    temperature=0.7,
-    top_p=0.9,
-)
-
-print(response)
-```
-
-或透過命令列：
+測試微調前的原始模型，建立基準線：
 
 ```bash
-python inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "請介紹國立臺灣師範大學。"
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "請介紹國立臺灣師範大學。"
 ```
 
 ### 推論 — 微調後
 
-載入微調後的 LoRA 適配器並生成回應：
-
-```python
-from inference import load_finetuned_model, generate_response
-
-model, tokenizer = load_finetuned_model(
-    base_model_id="Qwen/Qwen3.5-4B",
-    adapter_path="./my-finetuned-model",
-    use_4bit=True,
-)
-
-messages = [{"role": "user", "content": "請介紹國立臺灣師範大學。"}]
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=messages,
-    max_new_tokens=1024,
-    temperature=0.7,
-    top_p=0.9,
-)
-
-print(response)
-```
-
-或透過命令列（`--model_id` 須與訓練時一致）：
+載入微調後的 LoRA 適配器並生成回應（`--model_id` 須與訓練時一致）：
 
 ```bash
-python inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model --prompt "請介紹國立臺灣師範大學。"
 ```
 
 ### 推論 — 對比微調前後
 
 用**同一組提示**分別餵給兩個模型，觀察微調帶來的改善：
 
-```python
-from inference import compare_responses
-
-results = compare_responses(
-    base_model_id="Qwen/Qwen3.5-4B",
-    adapter_path="./my-finetuned-model",
-    test_prompts=[
-        [{"role": "user", "content": "請介紹國立臺灣師範大學。"}],
-        [{"role": "user", "content": "臺師大的歷史是什麼？"}],
-    ],
-    use_4bit=True,
-)
-```
-
-或透過命令列：
-
 ```bash
-python inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B --adapter_path ./my-finetuned-model
 ```
 
 ### 啟用思考模式推論
 
-若要啟用 Qwen3 的連鎖思考（chain-of-thought）推理，請設定 `enable_thinking=True`：
+若要啟用 Qwen3 的連鎖思考（chain-of-thought）推理，請傳入 `--use_thinking True`：
 
-```python
-from inference import load_finetuned_model, generate_response, extract_thinking
-
-model, tokenizer = load_finetuned_model("Qwen/Qwen3.5-4B", "./my-finetuned-model")
-
-response = generate_response(
-    model=model,
-    tokenizer=tokenizer,
-    messages=[{"role": "user", "content": "請問「strawberry」這個字有幾個 r？"}],
-    enable_thinking=True,
-)
-
-# 分別取出推理過程與最終答案
-thinking, answer = extract_thinking(response)
-if thinking:
-    print("=== 推理過程 ===")
-    print(thinking)
-    print("=== 最終答案 ===")
-    print(answer)
-else:
-    print(response)
+```bash
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+    --adapter_path ./my-finetuned-model \
+    --use_thinking True \
+    --prompt "請問「strawberry」這個字有幾個 r？"
 ```
 
 ---
@@ -464,19 +365,14 @@ else:
 
 ### 自訂 LoRA 目標模組
 
-預設情況下，LoRA 會套用至全部 7 個線性投影層：`q_proj`、`k_proj`、`v_proj`、`o_proj`、`gate_proj`、`up_proj`、`down_proj`。您可以將範圍限縮至僅注意力模組以節省記憶體，透過 Python API 傳入 `target_modules`（`run_sft.py` 未提供此 CLI 旗標）：
+預設情況下，LoRA 會套用至全部 7 個線性投影層：`q_proj`、`k_proj`、`v_proj`、`o_proj`、`gate_proj`、`up_proj`、`down_proj`。您可以將範圍限縮至僅注意力模組以節省記憶體：
 
-```python
-from config import FinetuneConfig
-from train import train
-
-cfg = FinetuneConfig(
-    dataset_path="./data/train.jsonl",
-    model_id="Qwen/Qwen3.5-4B",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    output_dir="./attention-only-lora",
-)
-train(cfg)
+```bash
+python src/train.py \
+    --dataset_path ./data/train.jsonl \
+    --model_id Qwen/Qwen3.5-4B \
+    --target_modules q_proj,k_proj,v_proj,o_proj \
+    --output_dir ./attention-only-lora
 ```
 
 ### 推送至 Hugging Face Hub
@@ -490,7 +386,7 @@ huggingface-cli login
 然後加上 `--push_to_hub` 與 `--hub_model_id` 旗標：
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/train.jsonl \
     --output_dir ./my-adapter \
     --push_to_hub True \
@@ -502,7 +398,7 @@ python run_sft.py \
 QLoRA（4-bit）為預設模式，所需記憶體最少。若要在不使用量化的情況下以 FP16 LoRA 訓練：
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/train.jsonl \
     --load_in_4bit False \
     --per_device_batch_size 1 \
@@ -516,7 +412,7 @@ python run_sft.py \
 如果您的資料集中包含推理過程（內容包覆在 `<think>...</think>` 中），可以啟用支援思考模式的對話模板：
 
 ```bash
-python run_sft.py \
+python src/train.py \
     --dataset_path ./data/reasoning_dataset.jsonl \
     --use_thinking True \
     --output_dir ./thinking-finetuned
@@ -560,7 +456,7 @@ my-finetuned-model/
 
 7. **資料品質重於數量**：對於指令微調而言，500–1000 筆高品質的乾淨資料集通常勝過 10,000 筆雜訊資料。
 
-8. **推論時須對應 `model_id`**：`inference.py` 使用的基底模型（`--model_id` 或 `base_model_id`）必須與微調時的模型一致。
+8. **推論時須對應 `model_id`**：`src/inference.py` 使用的基底模型（`--model_id`）必須與微調時的模型一致。
 
 ---
 
@@ -573,10 +469,11 @@ my-finetuned-model/
 | `OutOfMemoryError` | 批次大小超出 GPU 記憶體 | 降低 `--per_device_batch_size` 或 `--max_seq_length` |
 | `KeyError: 'qwen3'` | Transformers 版本過舊 | 升級至 `transformers>=4.47.0` |
 | bitsandbytes 匯入錯誤 | 缺少 CUDA 或版本不相容 | 確認 bitsandbytes 與 CUDA 版本匹配：`pip install bitsandbytes --force-reinstall` |
-| Hub 下載 / SSL 錯誤 | conda/Windows 上 `SSL_CERT_FILE` 損壞 | `env_utils.fix_ssl_cert_env()` 會自動執行；或手動修正環境變數 |
+| Hub 下載 / SSL 錯誤 | conda/Windows 上 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` 損壞 | `src/train.py` 與 `src/inference.py` 啟動時會自動修復；或手動修正環境變數 |
 | 訓練損失出現 NaN | 學習率過高或資料類型問題 | 調低 `--lr` 或改用 `--torch_dtype bfloat16` |
 | 模型不斷重複相同句子 | 過擬合或溫度過低 | 提高 `--temperature` 或減少 `--epochs` |
 | `apply_chat_template` 錯誤 | 資料格式不符合預期 | 檢查資料集是否使用正確的格式（請見[資料格式](#資料格式)） |
+| 本機檔案被誤當成 Hub 資料集 | `dataset_path` 缺少 `./` 前綴 | 本機檔案請使用 `./data/train.jsonl`，勿寫成 `data/train.jsonl` |
 | 評估損失持續上升 | 過擬合 | 減少 `--epochs`、增加 `--test_split`，或加入更多訓練資料 |
 | `LoRA adapter not found` | `--adapter_path` 路徑錯誤 | 指向輸出目錄或 `checkpoint-*` 子目錄；推論會自動選取最新檢查點 |
 
