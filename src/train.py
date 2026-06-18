@@ -6,7 +6,7 @@ Executes sequentially from top to bottom for clear demonstration of the
 fine-tuning pipeline. All configuration is passed via CLI arguments.
 
 Usage:
-    python src/train.py --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned
+    python src/train.py --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu
     python src/train.py --dataset_path databricks/databricks-dolly-15k --dataset_format alpaca --epochs 5
 """
 

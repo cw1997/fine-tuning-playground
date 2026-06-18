@@ -154,16 +154,16 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. 使用內附的臺師大資料集（161 筆 ChatML 範例）進行訓練
-python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
+python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/qwen3.5-4b
 
 # 6. 以基底模型推論（微調前）— 儲存輸出以便對比
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 7. 以微調後模型推論 — 與步驟 6 對比
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 8. 以微調後模型進行互動式對話（輸入 quit 退出）
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/qwen3.5-4b
 ```
 
 詳細訓練選項與資料格式請見[使用方式](#使用方式)。
@@ -338,7 +338,7 @@ python src/train.py \
 ```bash
 # 微調後模型 — 互動式對話
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+    --adapter_path ./models/ntnu/qwen3.5-4b
 
 # 基底模型 — 先跑一條提示，再繼續互動
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
@@ -346,7 +346,7 @@ python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
 
 # 對比模式 — 每輪輸入同時顯示基底與微調後回應
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+    --adapter_path ./models/ntnu/qwen3.5-4b
 ```
 
 ### 推論 — 單次執行（`--no_interactive`）

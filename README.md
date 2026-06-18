@@ -167,16 +167,16 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # 5. Run training with the bundled NTNU dataset (161 ChatML examples)
-python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu-finetuned/qwen3.5-4b
+python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/qwen3.5-4b
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/qwen3.5-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
 
 # 8. Interactive chat with the fine-tuned model (type quit to exit)
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/qwen3.5-4b
 ```
 
 See the [Usage](#usage) section for detailed training options and dataset formats.
@@ -351,7 +351,7 @@ By default, `src/inference.py` keeps the model loaded and enters an interactive 
 ```bash
 # Fine-tuned model — interactive chat
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+    --adapter_path ./models/ntnu/qwen3.5-4b
 
 # Base model — run one prompt, then continue interactively
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
@@ -359,7 +359,7 @@ python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
 
 # Compare mode — each input shows base vs fine-tuned responses
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu-finetuned/qwen3.5-4b
+    --adapter_path ./models/ntnu/qwen3.5-4b
 ```
 
 ### Inference — One-Shot (`--no_interactive`)

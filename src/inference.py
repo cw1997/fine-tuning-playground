@@ -7,8 +7,8 @@ and side-by-side comparison between base and fine-tuned outputs.
 
 Usage:
     python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "Hello"
-    python src/inference.py --mode finetuned --adapter_path ./models/ntnu-finetuned
-    python src/inference.py --mode compare --adapter_path ./models/ntnu-finetuned
+    python src/inference.py --mode finetuned --adapter_path ./models/ntnu
+    python src/inference.py --mode compare --adapter_path ./models/ntnu
 
     # Interactive mode (default): keep entering prompts after loading; type quit to exit
     python src/inference.py --mode finetuned --adapter_path ./models/ntnu/qwen3.5-4b
@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore", message=".*triton not found.*")
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -43,6 +44,35 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 ADAPTER_CONFIG_NAME = "adapter_config.json"
 EXIT_COMMANDS = frozenset({"quit", "exit", "q"})
+_UTF8_CONSOLE_CODE_PAGE = 65001
+
+
+def configure_stdio_utf8() -> None:
+    """Ensure stdin/stdout/stderr use UTF-8 for interactive CJK input on Windows.
+
+    Reconfigures Python text streams and, on Windows consoles, switches the
+    active code page to UTF-8 so typed characters echo correctly.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel32.SetConsoleCP(_UTF8_CONSOLE_CODE_PAGE)
+        kernel32.SetConsoleOutputCP(_UTF8_CONSOLE_CODE_PAGE)
+    except (AttributeError, OSError):
+        pass
 
 
 def parse_args() -> argparse.Namespace:
@@ -437,6 +467,7 @@ def run_interactive_loop(
 
 def main():
     """Orchestrate the full inference pipeline: parse args, load model, and run the selected mode."""
+    configure_stdio_utf8()
     args = parse_args()
     device_map, use_cuda, load_in_4bit, compute_dtype = resolve_device(args)
     base_model, tokenizer = load_base_model_and_tokenizer(
