@@ -17,57 +17,33 @@ Usage:
     python src/inference.py --mode base --prompt "Hello" --no_interactive
 """
 
-import os
-
-import certifi
-
-# Fix SSL certificate path issues commonly found on Windows / conda environments
-for _ssl_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
-    _ssl_val = os.environ.get(_ssl_var)
-    if _ssl_val and not os.path.isfile(_ssl_val):
-        os.environ[_ssl_var] = certifi.where()
-
 import argparse
-import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import torch
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+from model_utils import (
+    DEFAULT_MODEL_ID,
+    fix_ssl_certificates,
+    load_base_model,
+    load_tokenizer,
+    resolve_device,
+)
+
+fix_ssl_certificates()
 
 ADAPTER_CONFIG_NAME = "adapter_config.json"
 EXIT_COMMANDS = frozenset({"quit", "exit", "q"})
-_UTF8_CONSOLE_CODE_PAGE = 65001
 
 
 def configure_stdio_utf8() -> None:
-    """Ensure stdin/stdout/stderr use UTF-8 for interactive CJK input on Windows.
-
-    Reconfigures Python text streams and, on Windows consoles, switches the
-    active code page to UTF-8 so typed characters echo correctly.
-    """
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(encoding="utf-8", errors="replace")
-        except (OSError, ValueError):
-            pass
-
-    if sys.platform != "win32":
-        return
-
-    try:
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        kernel32.SetConsoleCP(_UTF8_CONSOLE_CODE_PAGE)
-        kernel32.SetConsoleOutputCP(_UTF8_CONSOLE_CODE_PAGE)
-    except (AttributeError, OSError):
-        pass
+    """Reconfigure stdout/stderr to UTF-8 on Windows for Chinese output."""
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace: Parsed command-line arguments.
     """
     parser = argparse.ArgumentParser(description="Qwen3 inference")
-    parser.add_argument("--model_id", type=str, default="Qwen/Qwen3-4B", help="Base model ID")
+    parser.add_argument("--model_id", type=str, default=DEFAULT_MODEL_ID, help="Base model ID")
     parser.add_argument("--mode", type=str, default="base", choices=["base", "finetuned", "compare"],
                         help="Inference mode")
     parser.add_argument("--adapter_path", type=str, default=None, help="LoRA adapter path")
@@ -114,55 +90,6 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def resolve_device(args: argparse.Namespace):
-    """Detect and return device configuration based on CLI args and system capabilities.
-
-    Args:
-        args: Parsed CLI arguments containing --device, --load_in_4bit, and --torch_dtype.
-
-    Returns:
-        Tuple of (device_map, use_cuda, load_in_4bit, compute_dtype).
-    """
-    if args.device == "cpu":
-        device_map = {"": "cpu"}
-        use_cuda = False
-    elif args.device == "gpu":
-        if not torch.cuda.is_available():
-            raise RuntimeError("--device gpu was specified but CUDA is unavailable.")
-        device_map = {"": 0}
-        use_cuda = True
-    else:
-        if torch.cuda.is_available():
-            device_map = {"": 0}
-            use_cuda = True
-        else:
-            device_map = {"": "cpu"}
-            use_cuda = False
-
-    load_in_4bit = args.load_in_4bit
-    dtype_str = args.torch_dtype
-    if not use_cuda:
-        if load_in_4bit:
-            print("  Note: 4-bit quantization requires GPU; falling back to full precision on CPU.")
-            load_in_4bit = False
-        if dtype_str != "float32":
-            dtype_str = "float32"
-
-    dtype_map = {
-        "bfloat16": torch.bfloat16,
-        "float16": torch.float16,
-        "float32": torch.float32,
-    }
-    compute_dtype = dtype_map[dtype_str]
-
-    if use_cuda:
-        print(f"Using device: cuda:0 ({torch.cuda.get_device_name(0)})")
-    else:
-        print("Using device: cpu")
-
-    return device_map, use_cuda, load_in_4bit, compute_dtype
-
-
 def load_base_model_and_tokenizer(
     model_id: str,
     load_in_4bit: bool,
@@ -181,27 +108,9 @@ def load_base_model_and_tokenizer(
         Tuple of (base_model, tokenizer).
     """
     print(f"Loading tokenizer from {model_id}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    quantization_config = None
-    if load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=compute_dtype,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-        )
-
+    tokenizer = load_tokenizer(model_id)
     print(f"Loading base model from {model_id}...")
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=quantization_config,
-        dtype=compute_dtype,
-        device_map=device_map,
-        trust_remote_code=True,
-    )
+    base_model = load_base_model(model_id, load_in_4bit, compute_dtype, device_map)
     return base_model, tokenizer
 
 
@@ -319,46 +228,50 @@ def build_test_prompts(args: argparse.Namespace) -> List[List[Dict[str, str]]]:
     return []
 
 
-def run_base_mode(base_model, tokenizer, test_prompts: List[List[Dict[str, str]]], args: argparse.Namespace):
-    """Run inference using the base model without any LoRA adapter.
+def _generation_kwargs(args: argparse.Namespace) -> tuple:
+    """Return generation keyword arguments as a tuple for ``generate_response``."""
+    return (
+        args.use_thinking,
+        args.max_new_tokens,
+        args.temperature,
+        args.top_p,
+    )
+
+
+def _print_compare_responses(base_response: str, ft_response: str) -> None:
+    """Print base and fine-tuned responses in a consistent comparison format.
 
     Args:
-        base_model: The base pretrained model.
-        tokenizer: The model tokenizer.
-        test_prompts: List of test prompt message lists.
-        args: Parsed CLI arguments with generation parameters.
+        base_response: Response from the base model.
+        ft_response: Response from the fine-tuned model.
     """
-    print("Running inference with BASE model...")
-    for messages in test_prompts:
-        print(f"\nPrompt: {messages[-1]['content']}")
-        response = generate_response(
-            base_model, tokenizer, messages,
-            args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
-        )
-        print(f"Response:\n{response}")
+    print("\n--- Base model response ---")
+    print(base_response)
+    print("\n--- Fine-tuned model response ---")
+    print(ft_response)
 
 
-def run_finetuned_mode(
-    ft_model,
+def run_batch_mode(
+    model,
     tokenizer,
+    label: str,
     test_prompts: List[List[Dict[str, str]]],
     args: argparse.Namespace,
-):
-    """Run batch inference using a pre-loaded fine-tuned LoRA adapter.
+) -> None:
+    """Run batch inference with a single model.
 
     Args:
-        ft_model: PEFT-wrapped model with the LoRA adapter already loaded.
+        model: The model to use for generation.
         tokenizer: The model tokenizer.
+        label: Human-readable label for the model (e.g., "BASE").
         test_prompts: List of test prompt message lists.
         args: Parsed CLI arguments with generation parameters.
     """
-    print("Running inference with FINE-TUNED model...")
+    print(f"Running inference with {label} model...")
+    gen_kwargs = _generation_kwargs(args)
     for messages in test_prompts:
         print(f"\nPrompt: {messages[-1]['content']}")
-        response = generate_response(
-            ft_model, tokenizer, messages,
-            args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
-        )
+        response = generate_response(model, tokenizer, messages, *gen_kwargs)
         print(f"Response:\n{response}")
 
 
@@ -368,11 +281,8 @@ def run_compare_mode(
     tokenizer,
     test_prompts: List[List[Dict[str, str]]],
     args: argparse.Namespace,
-):
+) -> None:
     """Run side-by-side comparison of base vs. fine-tuned model outputs.
-
-    Generates responses from both models for each prompt and displays them
-    in a structured comparison format.
 
     Args:
         base_model: The base pretrained model.
@@ -382,6 +292,7 @@ def run_compare_mode(
         args: Parsed CLI arguments with generation parameters.
     """
     print("Comparing BASE vs FINE-TUNED model...")
+    gen_kwargs = _generation_kwargs(args)
     for i, messages in enumerate(test_prompts):
         print(f"\n{'=' * 60}")
         prompt_preview = messages[-1]["content"]
@@ -389,19 +300,9 @@ def run_compare_mode(
             prompt_preview = f"{prompt_preview[:80]}..."
         print(f"Prompt {i + 1}: {prompt_preview}")
 
-        print("\n--- Base model response ---")
-        base_response = generate_response(
-            base_model, tokenizer, messages,
-            args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
-        )
-        print(base_response)
-
-        print("\n--- Fine-tuned model response ---")
-        ft_response = generate_response(
-            ft_model, tokenizer, messages,
-            args.use_thinking, args.max_new_tokens, args.temperature, args.top_p,
-        )
-        print(ft_response)
+        base_response = generate_response(base_model, tokenizer, messages, *gen_kwargs)
+        ft_response = generate_response(ft_model, tokenizer, messages, *gen_kwargs)
+        _print_compare_responses(base_response, ft_response)
 
 
 def run_interactive_loop(
@@ -421,12 +322,7 @@ def run_interactive_loop(
         ft_model: PEFT-wrapped fine-tuned model; required for finetuned/compare.
     """
     print("\nInteractive mode. Enter prompts below (quit / exit / q to stop):")
-    gen_kwargs = (
-        args.use_thinking,
-        args.max_new_tokens,
-        args.temperature,
-        args.top_p,
-    )
+    gen_kwargs = _generation_kwargs(args)
 
     while True:
         try:
@@ -442,29 +338,21 @@ def run_interactive_loop(
 
         messages = [{"role": "user", "content": user_input}]
 
-        if mode == "base":
-            response = generate_response(base_model, tokenizer, messages, *gen_kwargs)
-            print(f"Response:\n{response}")
-        elif mode == "finetuned":
-            response = generate_response(ft_model, tokenizer, messages, *gen_kwargs)
-            print(f"Response:\n{response}")
-        elif mode == "compare":
-            print("\n--- Base model response ---")
-            base_response = generate_response(
-                base_model, tokenizer, messages, *gen_kwargs,
-            )
-            print(base_response)
-
-            print("\n--- Fine-tuned model response ---")
+        if mode == "compare":
+            base_response = generate_response(base_model, tokenizer, messages, *gen_kwargs)
             ft_response = generate_response(ft_model, tokenizer, messages, *gen_kwargs)
-            print(ft_response)
+            _print_compare_responses(base_response, ft_response)
+        else:
+            model = base_model if mode == "base" else ft_model
+            response = generate_response(model, tokenizer, messages, *gen_kwargs)
+            print(f"Response:\n{response}")
 
 
 def main():
     """Orchestrate the full inference pipeline: parse args, load model, and run the selected mode."""
     configure_stdio_utf8()
     args = parse_args()
-    device_map, use_cuda, load_in_4bit, compute_dtype = resolve_device(args)
+    device_map, _, load_in_4bit, compute_dtype = resolve_device(args)
     base_model, tokenizer = load_base_model_and_tokenizer(
         args.model_id, load_in_4bit, compute_dtype, device_map,
     )
@@ -479,9 +367,9 @@ def main():
 
     if test_prompts:
         if args.mode == "base":
-            run_base_mode(base_model, tokenizer, test_prompts, args)
+            run_batch_mode(base_model, tokenizer, "BASE", test_prompts, args)
         elif args.mode == "finetuned":
-            run_finetuned_mode(ft_model, tokenizer, test_prompts, args)
+            run_batch_mode(ft_model, tokenizer, "FINE-TUNED", test_prompts, args)
         elif args.mode == "compare":
             run_compare_mode(base_model, ft_model, tokenizer, test_prompts, args)
 

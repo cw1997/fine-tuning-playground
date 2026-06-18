@@ -11,17 +11,18 @@ Usage:
 """
 
 import os
-import shutil
 import warnings
+from pathlib import Path
 
-import certifi
+from model_utils import (
+    DEFAULT_MODEL_ID,
+    fix_ssl_certificates,
+    load_base_model,
+    load_tokenizer,
+    resolve_device,
+)
 
-# Fix SSL certificate path issues commonly found on Windows / conda environments
-for _ssl_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
-    _ssl_val = os.environ.get(_ssl_var)
-    if _ssl_val and not os.path.isfile(_ssl_val):
-        os.environ[_ssl_var] = certifi.where()
-        print(f"  Note: {_ssl_var} pointed to missing file; using certifi bundle.")
+fix_ssl_certificates(verbose=True)
 
 # Suppress FutureWarning from torch._check_is_size (to be removed in future PyTorch)
 warnings.filterwarnings("ignore", message=".*_check_is_size.*")
@@ -33,8 +34,7 @@ import json
 
 import torch
 from datasets import Dataset, load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model
 from trl import SFTConfig, SFTTrainer
 
 
@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Qwen3 supervised fine-tuning (LoRA / QLoRA)")
 
     # Model
-    parser.add_argument("--model_id", type=str, default="Qwen/Qwen3.5-0.8B",
+    parser.add_argument("--model_id", type=str, default=DEFAULT_MODEL_ID,
                         help="Hugging Face model ID (GPU recommended: Qwen/Qwen3.5-4B)")
     parser.add_argument("--load_in_4bit", type=lambda x: x.lower() == "true", default=True,
                         help="Enable 4-bit QLoRA quantization")
@@ -111,123 +111,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_device(args: argparse.Namespace):
-    """Detect and configure the compute device based on CLI args and system capabilities.
-
-    Determines device placement, device map, CUDA availability, and whether
-    4-bit quantization and mixed precision are feasible. Falls back to CPU
-    gracefully when GPU is unavailable.
-
-    Args:
-        args: Parsed CLI arguments containing --device and --load_in_4bit / --torch_dtype options.
-
-    Returns:
-        Tuple of (device_map, use_cuda, load_in_4bit, dtype_str, compute_dtype).
-    """
-    if args.device == "cpu":
-        device_map = {"": "cpu"}
-        use_cuda = False
-        print("Using device: cpu (--device cpu specified)")
-    elif args.device == "gpu":
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "--device gpu was specified but PyTorch has no CUDA available. "
-                "Install a CUDA-enabled PyTorch build or use --device cpu."
-            )
-        device_map = {"": 0}
-        use_cuda = True
-        print(f"Using device: cuda:0 ({torch.cuda.get_device_name(0)})")
-    else:
-        if torch.cuda.is_available():
-            device_map = {"": 0}
-            use_cuda = True
-            print(f"Using device: cuda:0 ({torch.cuda.get_device_name(0)})")
-        else:
-            device_map = {"": "cpu"}
-            use_cuda = False
-            print("Using device: cpu (CUDA unavailable)")
-            if torch.version.cuda is None or not torch.backends.cuda.is_built():
-                print("  Hint: The current PyTorch is a CPU build. Install CUDA-enabled PyTorch for GPU training.")
-            elif shutil.which("nvidia-smi"):
-                print("  Hint: NVIDIA driver detected but PyTorch cannot use CUDA.")
-
-    load_in_4bit = args.load_in_4bit
-    dtype_str = args.torch_dtype
-    if not use_cuda:
-        if load_in_4bit:
-            print("  Note: 4-bit quantization requires GPU; falling back to full precision on CPU.")
-            load_in_4bit = False
-        if dtype_str != "float32":
-            print(f"  Note: Using float32 on CPU instead of {dtype_str}.")
-            dtype_str = "float32"
-
-    dtype_map = {
-        "bfloat16": torch.bfloat16,
-        "float16": torch.float16,
-        "float32": torch.float32,
-    }
-    compute_dtype = dtype_map[dtype_str]
-
-    return device_map, use_cuda, load_in_4bit, compute_dtype
-
-
-def load_tokenizer(model_id: str):
-    """Load the tokenizer for a given Hugging Face model ID.
-
-    Args:
-        model_id: Hugging Face model identifier string.
-
-    Returns:
-        PreTrainedTokenizer: Loaded tokenizer with pad_token set to eos_token if missing.
-    """
-    print("\nStep 1/6: Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    print(f"  Tokenizer loaded: {model_id}")
-    return tokenizer
-
-
-def load_base_model(
-    model_id: str,
-    load_in_4bit: bool,
-    compute_dtype: torch.dtype,
-    device_map: dict,
-):
-    """Load the base causal language model, optionally with 4-bit quantization.
-
-    Args:
-        model_id: Hugging Face model identifier.
-        load_in_4bit: Whether to apply 4-bit QLoRA quantization.
-        compute_dtype: Target computation dtype (bfloat16, float16, or float32).
-        device_map: Device placement mapping (e.g., {"": 0} for GPU, {"": "cpu"} for CPU).
-
-    Returns:
-        PreTrainedModel: The loaded (and optionally quantized) base model.
-    """
-    print("\nStep 2/6: Loading base model...")
-    quantization_config = None
-    if load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=compute_dtype,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-        )
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=quantization_config,
-        dtype=compute_dtype,
-        device_map=device_map,
-        trust_remote_code=True,
-    )
-    if load_in_4bit:
-        model = prepare_model_for_kbit_training(model)
-    print(f"  Model loaded: {model_id}")
-    return model
-
-
 def apply_lora(model, args: argparse.Namespace, target_modules: list):
     """Configure and apply LoRA adapters on top of the base model.
 
@@ -251,20 +134,44 @@ def apply_lora(model, args: argparse.Namespace, target_modules: list):
     model = get_peft_model(model, lora_config)
     model.config.use_cache = False  # KV cache must be disabled for gradient checkpointing
     model.print_trainable_parameters()
-
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Total parameters:     {total_params:,}")
-    print(f"  Trainable parameters: {trainable_params:,}")
-    print(f"  Trainable %:          {100 * trainable_params / total_params:.4f}%")
     return model
+
+
+def _load_local_dataset(dataset_path: Path) -> Dataset:
+    """Load a dataset from a local JSON or JSONL file.
+
+    Args:
+        dataset_path: Path to a local dataset file.
+
+    Returns:
+        Hugging Face ``Dataset`` loaded from the file.
+
+    Raises:
+        ValueError: If the JSON structure is unsupported.
+    """
+    if dataset_path.suffix == ".jsonl":
+        records = []
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+        return Dataset.from_list(records)
+
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        return Dataset.from_list(data)
+    if isinstance(data, dict):
+        return Dataset.from_dict(data)
+    raise ValueError(f"Unsupported JSON structure: {dataset_path}")
 
 
 def load_dataset_from_path(args: argparse.Namespace):
     """Load and format the training dataset from a local file or Hugging Face hub.
 
     Supports JSONL (one JSON object per line), JSON array, JSON dict, and
-    Hugging Face dataset identifiers. Auto-detects format based on the path prefix.
+    Hugging Face dataset identifiers. Local paths are detected via the filesystem.
 
     Args:
         args: Parsed CLI arguments containing dataset_path, dataset_format, and use_thinking.
@@ -273,26 +180,16 @@ def load_dataset_from_path(args: argparse.Namespace):
         Tuple of (train_dataset, eval_dataset) as Dataset objects.
     """
     print("\nStep 4/6: Loading and formatting dataset...")
-    if args.dataset_path.startswith(("/", "./", ".")):
-        if args.dataset_path.endswith(".jsonl"):
-            records = []
-            with open(args.dataset_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        records.append(json.loads(line))
-            dataset = Dataset.from_list(records)
-        else:
-            with open(args.dataset_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                dataset = Dataset.from_list(data)
-            elif isinstance(data, dict):
-                dataset = Dataset.from_dict(data)
-            else:
-                raise ValueError(f"Unsupported JSON structure: {args.dataset_path}")
-    elif args.dataset_path == "":
+    if not args.dataset_path:
         raise ValueError("dataset_path must not be empty.")
+
+    path = Path(args.dataset_path)
+    if path.is_file():
+        dataset = _load_local_dataset(path)
+    elif path.exists():
+        raise ValueError(
+            f"dataset_path '{args.dataset_path}' is a directory; provide a JSON/JSONL file."
+        )
     else:
         dataset = load_dataset(args.dataset_path, split="train")
 
@@ -358,12 +255,10 @@ def configure_training(
     """Configure and run the SFTTrainer training loop.
 
     Sets up mixed precision flags, SFTConfig with training hyperparameters,
-    instantiates the SFTTrainer, and runs training.
+    instantiates the SFTTrainer, and runs training. Uses module-level
+    ``model``, ``tokenizer``, and ``train_dataset``.
 
     Args:
-        model: The LoRA-wrapped PEFT model.
-        tokenizer: The model tokenizer.
-        train_dataset: Training dataset.
         args: Parsed CLI arguments with training hyperparameters.
         use_cuda: Whether CUDA is available.
         eval_dataset: Evaluation dataset (or None).
@@ -460,8 +355,17 @@ def main():
     global tokenizer, model, train_dataset
 
     device_map, use_cuda, load_in_4bit, compute_dtype = resolve_device(args)
+
+    print("\nStep 1/6: Loading tokenizer...")
     tokenizer = load_tokenizer(args.model_id)
-    model = load_base_model(args.model_id, load_in_4bit, compute_dtype, device_map)
+    print(f"  Tokenizer loaded: {args.model_id}")
+
+    print("\nStep 2/6: Loading base model...")
+    model = load_base_model(
+        args.model_id, load_in_4bit, compute_dtype, device_map, prepare_kbit=True,
+    )
+    print(f"  Model loaded: {args.model_id}")
+
     model = apply_lora(model, args, target_modules)
     train_dataset, eval_dataset = load_dataset_from_path(args)
     trainer = configure_training(args, use_cuda, eval_dataset, args.torch_dtype)
