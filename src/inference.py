@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
                         help="Sampling temperature")
     parser.add_argument("--top_p", type=float, default=0.9,
                         help="Nucleus sampling threshold")
-    parser.add_argument("--use_thinking", type=lambda x: x.lower() == "true", default=True,
+    parser.add_argument("--use_thinking", type=lambda x: x.lower() == "true", default=False,
                         help="Enable thinking mode")
 
     args = parser.parse_args()
