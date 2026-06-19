@@ -13,6 +13,12 @@
 - [快速開始](#快速開始)
 - [專案結構](#專案結構)
 - [設定參數](#設定參數)
+- [建議訓練預設組合](#建議訓練預設組合)
+  - [VRAM 與模型規模（QLoRA）](#vram-與模型規模qlora)
+  - [資料集規模指引](#資料集規模指引)
+  - [具名預設組合](#具名預設組合)
+  - [預設腳本](#預設腳本)
+  - [各預設的手動命令](#各預設的手動命令)
 - [資料格式](#資料格式)
   - [ChatML 格式](#chatml-格式)
   - [Alpaca 格式](#alpaca-格式)
@@ -68,11 +74,13 @@
 
 | 設定 | 最低 VRAM | 建議 GPU |
 |---|---|---|
-| QLoRA（4-bit，batch size 2） | ~6 GB | RTX 3060 / 4060 / 4070、T4 |
-| LoRA（16-bit，batch size 1） | ~12 GB | RTX 3080 / 4070 Ti / 4080、A10 |
+| QLoRA 4B（4-bit，batch 1–2） | ~6–8 GB | RTX 3060 / 4060 / 4070、T4 |
+| QLoRA 9B（4-bit，batch 1） | ~10–12 GB | RTX 4070 Ti / 5070 Ti（筆電）、3080 12 GB |
+| QLoRA 9B（4-bit，batch 2） | ~20–24 GB | RTX 4090 / 3090 24 GB、A5000 |
+| LoRA 4B（16-bit，batch 1） | ~12 GB | RTX 3080 / 4070 Ti / 4080、A10 |
 | CPU（無量化，float32） | — | 任何 CPU（極慢，僅冒煙測試） |
 
-強烈建議使用 GPU 訓練。在無 CUDA 的機器上，流程會自動關閉 4-bit 量化並以 CPU `float32` 執行。可用 `--device gpu` 或 `--device cpu` 覆寫自動偵測。
+強烈建議使用 GPU 訓練。在無 CUDA 的機器上，流程會自動關閉 4-bit 量化並以 CPU `float32` 執行。可用 `--device gpu` 或 `--device cpu` 覆寫自動偵測。各 GPU 等級的現成命令請見[建議訓練預設組合](#建議訓練預設組合)。
 
 ---
 
@@ -110,6 +118,10 @@ pip install -r requirements.txt
 ```bash
 bash scripts/install_deps.sh                 # Linux / macOS / Git Bash
 powershell -File scripts/install_deps.ps1    # Windows PowerShell
+
+# 列出訓練預設（VRAM / 模型 / 資料集規模）
+bash scripts/train_preset.sh --list          # Linux / macOS / Git Bash
+powershell -File scripts/train_preset.ps1 -List
 ```
 
 驗證 PyTorch 是否能看到 GPU：
@@ -153,8 +165,10 @@ pip install -r requirements.txt
 # 4. 確認 GPU 可用
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
-# 5. 使用內附的臺師大資料集（161 筆 ChatML 範例）進行訓練
-python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/qwen3.5-4b
+# 5. 使用內附的臺師大資料集（約 34K 筆 ChatML 範例）進行訓練
+bash scripts/train_preset.sh gpu-12gb-4b
+# 或手動執行：
+# python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_combined.jsonl --output_dir ./models/ntnu/qwen3.5-4b
 
 # 6. 以基底模型推論（微調前）— 儲存輸出以便對比
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
@@ -179,11 +193,12 @@ fine-tuning-playground/
 │   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
 │   └── inference.py          # 互動式推論 + 微調前/後/對比模式
 ├── data/                     # 訓練資料集與產生器
-│   ├── ntnu_dataset.jsonl    # 內附臺師大 ChatML 資料集（161 筆）
+│   ├── ntnu_combined.jsonl   # 內附臺師大 ChatML 資料集（約 34K 筆）
+│   ├── ntnu_dataset.jsonl    # 合併後資料集（同上）
 │   ├── generate_ntnu_dataset.py
 │   └── ntnu_extended_records.py
 ├── models/                   # 微調後的 LoRA 適配器（已加入 .gitignore）
-├── scripts/                  # install_deps.sh / install_deps.ps1
+├── scripts/                  # install_deps.* / train_preset.*
 ├── README.md                 # 英文文件
 └── README.zh-Hant.md         # 本文件（繁體中文）
 ```
@@ -194,7 +209,9 @@ fine-tuning-playground/
 
 **`src/inference.py`** — 獨立推論腳本，支援基底模型、微調後模型或並排對比。預設在載入模型後進入互動式提示詞迴圈（`You:` 提示；輸入 `quit` / `exit` / `q` 退出）。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--no_interactive`、`--load_in_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`、`--device`、`--torch_dtype`。
 
-**`data/`** — 包含內附的 `ntnu_dataset.jsonl`（161 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`ntnu_extended_records.py`）。
+**`data/`** — 包含內附的 `ntnu_combined.jsonl` / `ntnu_dataset.jsonl`（約 34K 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`data/` 下的批次模組）。
+
+**`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — 針對常見 GPU 等級與模型規模的具名訓練預設。可用 `DATASET_PATH=./data/my.jsonl` 覆寫資料集路徑。
 
 ---
 
@@ -233,6 +250,181 @@ fine-tuning-playground/
 | | `no_interactive` | `False` | 批次推論後直接退出，不進入互動迴圈 |
 
 > **備註：** `src/train.py` 的 `--model_id` 預設為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`。`src/inference.py` 的 `--model_id` 預設為 `Qwen/Qwen3-4B` — 推論時請明確指定與微調時相同的模型。在 `src/inference.py` 中，省略 `--prompt` 會跳過批次測試並直接進入互動迴圈；搭配 `--no_interactive` 且未提供 `--prompt` 時，會使用兩條內建的 NTNU 測試提示。
+
+---
+
+## 建議訓練預設組合
+
+以下預設均假設使用 **QLoRA（4-bit）**、**`bfloat16`**、**ChatML 格式**（`--dataset_format chat`），且**有效批次大小為 16**（`per_device_batch_size × gradient_accum_steps`）。所有預設皆啟用 5% 評估分割，並依 eval loss 儲存最佳檢查點。
+
+內附的臺師大資料集（`./data/ntnu_combined.jsonl`）約含 **34,472** 筆範例 — 若使用較小或較大的自訂資料集，請搭配下方[資料集規模指引](#資料集規模指引)調整。
+
+### VRAM 與模型規模（QLoRA）
+
+以下為硬體層級的起始建議，再依[資料集規模](#資料集規模指引)微調。若遇到 OOM，請先降低 `--max_seq_length`；仍不足時改用 `--target_modules q_proj,k_proj,v_proj,o_proj`。
+
+| VRAM | 模型 | Batch | Accum | Max Seq | LoRA r | Epochs | LR | 備註 |
+|---|---|---|---|---|---|---|---|---|
+| 6–8 GB | Qwen3.5-4B | 1 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 / 4060 / 4070 |
+| 12 GB | Qwen3.5-4B | 2 | 8 | 2048 | 16 | 3 | 2e-4 | 4B 訓練較充裕 |
+| 12 GB | Qwen3.5-9B | 1 | 16 | 1536 | 16 | 2 | 1.5e-4 | 12 GB 筆電（如 RTX 5070 Ti） |
+| 12 GB | Qwen3.5-9B | 1 | 16 | 2048 | 16 | 2 | 1.5e-4 | 僅 attention LoRA，OOM 時使用 |
+| 16 GB | Qwen3.5-9B | 1 | 16 | 2048 | 32 | 2 | 1.5e-4 | RTX 4080 16 GB / 4070 Ti Super |
+| 24 GB | Qwen3.5-4B | 2 | 8 | 4096 | 32 | 3 | 2e-4 | 4B 長上下文 |
+| 24 GB | Qwen3.5-9B | 2 | 8 | 2048 | 32 | 2 | 1.5e-4 | 建議的桌面 9B 配置 |
+| CPU | Qwen3.5-0.8B | 1 | 4 | 512 | 8 | 1 | 2e-4 | 僅冒煙測試；需 `--device cpu` |
+
+### 資料集規模指引
+
+在[硬體預設](#vram-與模型規模qlora)基礎上套用下列調整。有效批次大小建議維持在 **16–32**。
+
+| 範例數 | Epochs | 學習率 | LoRA r | test_split | 備註 |
+|---|---|---|---|---|---|
+| < 500 | 3–5 | 1e-4 | 16 | 0.10 | 過擬合風險高；密切監控 eval loss |
+| 500 – 5,000 | 3 | 2e-4 | 16 | 0.05 | 小型自訂資料集的良好預設 |
+| 5,000 – 30,000 | 2–3 | 1.5e-4 – 2e-4 | 32 | 0.05 | 較高 rank 有助領域適應 |
+| 30,000+ | 1–2 | 1.5e-4 | 16–32 | 0.05 | 內附 NTNU（~34K）；避免 3+ epoch |
+
+**內附 NTNU（~34K）：** 搭配 `gpu-12gb-9b` 或 `gpu-24gb-9b`，使用 **2 epoch**、**lr = 1.5e-4**。正式訓練前請先跑 smoke 預設。
+
+### 具名預設組合
+
+| 預設名稱 | 目標硬體 | 模型 | 用途 |
+|---|---|---|---|
+| `smoke-4b` | 任何 GPU | Qwen3.5-4B | 1 epoch 流程驗證 |
+| `smoke-9b` | 12 GB+ GPU | Qwen3.5-9B | 1 epoch 流程驗證（12 GB 友善） |
+| `cpu-smoke` | 僅 CPU | Qwen3.5-0.8B | 無 GPU 時驗證安裝 |
+| `gpu-8gb-4b` | 6–8 GB | Qwen3.5-4B | 入門級消費級 GPU |
+| `gpu-12gb-4b` | 12 GB | Qwen3.5-4B | 12 GB 上均衡的 4B 訓練 |
+| `gpu-12gb-9b` | 12 GB 筆電/桌面 | Qwen3.5-9B | **建議 RTX 5070 Ti 12 GB 筆電使用** |
+| `gpu-12gb-9b-long` | 12 GB | Qwen3.5-9B | 較長回答（2048 seq，僅 attention LoRA） |
+| `gpu-16gb-9b` | 16 GB | Qwen3.5-9B | 全 7 層 LoRA，r=32 |
+| `gpu-24gb-4b` | 24 GB | Qwen3.5-4B | 高品質 4B、長上下文 |
+| `gpu-24gb-9b` | 24 GB | Qwen3.5-9B | **建議的桌面 9B 訓練** |
+
+### 預設腳本
+
+選用：在 Windows / Git Bash 訓練前可設定，以減輕 CUDA 記憶體碎片化：
+
+```bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+```
+
+**Linux / macOS / Git Bash：**
+
+```bash
+# 列出所有預設
+bash scripts/train_preset.sh --list
+
+# 冒煙測試（正式訓練前建議先跑）
+bash scripts/train_preset.sh smoke-9b
+
+# 完整訓練 — 12 GB 筆電 + Qwen3.5-9B（內附 NTNU 資料集）
+bash scripts/train_preset.sh gpu-12gb-9b
+
+# 自訂資料集
+DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-24gb-9b
+
+# 自訂輸出目錄
+OUTPUT_DIR=./models/my-run DATASET_PATH=./data/my.jsonl bash scripts/train_preset.sh gpu-12gb-4b
+```
+
+**Windows PowerShell：**
+
+```powershell
+# 列出所有預設
+powershell -File scripts/train_preset.ps1 -List
+
+# 冒煙測試
+powershell -File scripts/train_preset.ps1 -Preset smoke-9b
+
+# 完整訓練 — 12 GB 筆電
+powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-9b
+
+# 自訂資料集
+$env:DATASET_PATH = ".\data\my_dataset.jsonl"
+powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
+```
+
+### 各預設的手動命令
+
+若不想使用輔助腳本，可直接複製以下命令。
+
+**冒煙測試 — Qwen3.5-9B（12 GB 友善）：**
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-9B \
+  --dataset_path ./data/ntnu_combined.jsonl \
+  --device gpu \
+  --load_in_4bit True \
+  --torch_dtype bfloat16 \
+  --max_seq_length 1536 \
+  --num_epochs 1 \
+  --per_device_batch_size 1 \
+  --gradient_accum_steps 8 \
+  --learning_rate 2e-4 \
+  --lora_r 16 --lora_alpha 32 \
+  --test_split 0.05 \
+  --save_steps 200 \
+  --output_dir ./models/ntnu/smoke-9b
+```
+
+**12 GB 筆電 — Qwen3.5-9B + NTNU（~34K）：**
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-9B \
+  --dataset_path ./data/ntnu_combined.jsonl \
+  --device gpu \
+  --load_in_4bit True \
+  --torch_dtype bfloat16 \
+  --max_seq_length 1536 \
+  --num_epochs 2 \
+  --per_device_batch_size 1 \
+  --gradient_accum_steps 16 \
+  --learning_rate 1.5e-4 \
+  --lora_r 16 --lora_alpha 32 \
+  --lora_dropout 0.05 \
+  --warmup_ratio 0.03 \
+  --test_split 0.05 \
+  --logging_steps 10 \
+  --save_steps 250 \
+  --output_dir ./models/ntnu/gpu-12gb-9b
+```
+
+**24 GB 桌面 — Qwen3.5-9B + NTNU（~34K）：**
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-9B \
+  --dataset_path ./data/ntnu_combined.jsonl \
+  --device gpu \
+  --load_in_4bit True \
+  --torch_dtype bfloat16 \
+  --max_seq_length 2048 \
+  --num_epochs 2 \
+  --per_device_batch_size 2 \
+  --gradient_accum_steps 8 \
+  --learning_rate 1.5e-4 \
+  --lora_r 32 --lora_alpha 64 \
+  --lora_dropout 0.05 \
+  --test_split 0.05 \
+  --save_steps 300 \
+  --output_dir ./models/ntnu/gpu-24gb-9b
+```
+
+**訓練後對比推論：**
+
+```bash
+python src/inference.py \
+  --mode compare \
+  --model_id Qwen/Qwen3.5-9B \
+  --adapter_path ./models/ntnu/gpu-12gb-9b \
+  --load_in_4bit True \
+  --prompt "請簡單介紹國立臺灣師範大學。" \
+  --no_interactive
+```
 
 ---
 
@@ -462,7 +654,7 @@ my-finetuned-model/
 
 ## 建議與最佳實踐
 
-1. **從小處著手**：先使用 `--max_seq_length 2048` 與 `--epochs 1` 進行快速測試，確認資料流程正常後再投入完整的訓練。
+1. **從小處著手**：正式訓練前先執行 `bash scripts/train_preset.sh smoke-4b`（9B 模型用 `smoke-9b`）。亦可手動使用 `--max_seq_length 2048` 與 `--epochs 1` 快速驗證。
 
 2. **有效批次大小**：有效批次大小為 `per_device_batch_size * gradient_accum_steps * num_gpus`。建議目標值為 16–32。以 1 張 GPU 為例，`--per_device_batch_size 2 --gradient_accum_steps 8` 的有效批次大小即為 16。
 
