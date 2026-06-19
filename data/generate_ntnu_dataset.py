@@ -14,6 +14,10 @@ from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ntnu_extended_records import get_extended_records, qa
+from ntnu_massive_records1 import get_massive_records1
+from ntnu_massive_records2 import get_massive_records2
+from ntnu_massive_records3 import get_massive_records3
+from ntnu_massive_records4 import get_massive_records4
 
 
 def generate_dataset() -> List[Dict]:
@@ -212,8 +216,12 @@ def generate_dataset() -> List[Dict]:
         'TOCFL（Test of Chinese as a Foreign Language）華語文能力測驗是由臺灣國家華語測驗推動工作委員會（簡稱華測會）研發與推行的標準化華語能力測驗。華測會即設於國立臺灣師範大學，由師大負責試題研發、測驗執行與成績認證。\n\nTOCFL分為六個等級（Band 1-6），對應CEFR（歐洲共同語言參考架構）的A1到C2等級。測驗內容涵蓋聽力、閱讀、口語與寫作四個面向。TOCFL成績廣泛被臺灣各大學作為外國學生入學的中文能力證明，也是申請臺灣獎學金的必要條件之一。\n\n師大國語教學中心（MTC）提供TOCFL的培訓課程，幫助學生準備測驗。每年有數以萬計的考生在全球各地的考場參加TOCFL測驗。',
     ))
 
-    # Append extended records from the companion module
+    # Append extended records from companion modules
     records.extend(get_extended_records())
+    records.extend(get_massive_records1())
+    records.extend(get_massive_records2())
+    records.extend(get_massive_records3())
+    records.extend(get_massive_records4())
 
     return records
 
