@@ -4,6 +4,7 @@ Supervised fine-tuning (SFT) script for Qwen3 / Qwen3.5 models.
 
 Usage:
     python src/train.py --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu
+    python src/train.py --dataset_path ./data --output_dir ./models/ntnu
     python src/train.py --dataset_path databricks/databricks-dolly-15k --dataset_format alpaca --epochs 5
 """
 
@@ -57,7 +58,8 @@ def parse_args() -> argparse.Namespace:
                         help="Comma-separated LoRA target modules")
 
     parser.add_argument("--dataset_path", type=str, required=True,
-                        help="Local JSON/JSONL path or Hugging Face dataset name")
+                        help="Local JSON/JSONL file, directory of JSONL files "
+                             "(recursive), or Hugging Face dataset name")
     parser.add_argument("--dataset_format", type=str, default="chat",
                         choices=["chat", "alpaca", "text"],
                         help="Dataset format schema")
@@ -87,6 +89,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _read_jsonl_records(file_path: Path) -> list[dict]:
+    """Read all records from a JSONL file.
+
+    Args:
+        file_path: Path to a local JSONL file.
+
+    Returns:
+        List of parsed JSON objects, one per non-empty line.
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
 def _load_local_dataset(dataset_path: Path) -> Dataset:
     """Load a dataset from a local JSON or JSONL file.
 
@@ -100,9 +115,7 @@ def _load_local_dataset(dataset_path: Path) -> Dataset:
         ValueError: If the JSON structure is unsupported.
     """
     if dataset_path.suffix == ".jsonl":
-        with open(dataset_path, "r", encoding="utf-8") as f:
-            records = [json.loads(line) for line in f if line.strip()]
-        return Dataset.from_list(records)
+        return Dataset.from_list(_read_jsonl_records(dataset_path))
 
     with open(dataset_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -111,6 +124,33 @@ def _load_local_dataset(dataset_path: Path) -> Dataset:
     if isinstance(data, dict):
         return Dataset.from_dict(data)
     raise ValueError(f"Unsupported JSON structure: {dataset_path}")
+
+
+def _load_jsonl_directory(directory: Path) -> Dataset:
+    """Load and merge all JSONL files under a directory recursively.
+
+    Args:
+        directory: Root directory to scan for ``*.jsonl`` files.
+
+    Returns:
+        Hugging Face Dataset containing all records from matched files.
+
+    Raises:
+        ValueError: If no JSONL files are found under the directory.
+    """
+    jsonl_files = sorted(directory.rglob("*.jsonl"))
+    if not jsonl_files:
+        raise ValueError(f"No .jsonl files found under: {directory}")
+
+    records: list[dict] = []
+    for file_path in jsonl_files:
+        records.extend(_read_jsonl_records(file_path))
+
+    print(
+        f"Loaded {len(records)} examples from {len(jsonl_files)} JSONL file(s) "
+        f"under {directory}"
+    )
+    return Dataset.from_list(records)
 
 
 def _example_to_messages(example: dict, dataset_format: str) -> list:
@@ -166,8 +206,12 @@ def load_training_datasets(args: argparse.Namespace, tokenizer) -> tuple:
     path = Path(args.dataset_path)
     if path.is_file():
         dataset = _load_local_dataset(path)
+    elif path.is_dir():
+        dataset = _load_jsonl_directory(path)
     elif path.exists():
-        raise ValueError(f"dataset_path '{args.dataset_path}' must be a JSON/JSONL file.")
+        raise ValueError(
+            f"dataset_path '{args.dataset_path}' must be a JSON/JSONL file or directory."
+        )
     else:
         dataset = load_dataset(args.dataset_path, split="train")
 
