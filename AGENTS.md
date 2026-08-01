@@ -72,11 +72,13 @@ fine-tuning-playground/
 ├── src/                    # Source code
 │   ├── train.py            # SFT training pipeline (single-file, CLI-driven)
 │   ├── inference.py        # Inference script (base / finetuned / compare modes)
-│   └── inspect_model.py    # Model internals inspection (params, vocab, dims, config)
+│   ├── inspect_model.py    # Model internals inspection (params, vocab, dims, config)
+│   └── inspect_tokenizer.py # Tokenizer inspection (token pieces, ids, embedding vectors)
 ├── data/                   # Datasets and generators
-│   ├── generate_ntnu_dataset.py  # Dataset generator script
-│   ├── ntnu_extended_records.py  # Extended Q&A records module
-│   └── ntnu_dataset.jsonl       # Bundled dataset (161+ ChatML records)
+│   ├── generate_ntnu_dataset.py  # Aggregates ntnu/ + taiwan/ into full_dataset.jsonl
+│   ├── restructure_dataset.py    # Splits ntnu_dataset.jsonl into categorized files
+│   ├── ntnu_dataset.jsonl       # Bundled dataset (~1.2K ChatML records)
+│   └── _archive/                # Legacy record generator modules
 ├── scripts/                # Installation helpers (shell/PowerShell)
 └── models/                 # Fine-tuned LoRA adapters (gitignored)
 ```

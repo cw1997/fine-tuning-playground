@@ -38,6 +38,7 @@ A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3
     - [Inference — One-Shot (`--no_interactive`)](#inference--one-shot---no_interactive)
     - [Inference with Thinking Mode](#inference-with-thinking-mode)
     - [Inspecting a Model](#inspecting-a-model)
+    - [Inspecting the Tokenizer](#inspecting-the-tokenizer)
   - [Advanced Usage](#advanced-usage)
     - [Custom LoRA Target Modules](#custom-lora-target-modules)
     - [Push to Hugging Face Hub](#push-to-hugging-face-hub)
@@ -72,6 +73,7 @@ This project provides a complete fine-tuning pipeline that lets you adapt these 
 - **CPU fallback** — when CUDA is unavailable, training and inference automatically fall back to full-precision CPU (slow; intended for smoke tests).
 - **Single-file training script** — `src/train.py` runs the full SFT pipeline sequentially, ideal for walking through each step when teaching fine-tuning.
 - **Model inspection** — `src/inspect_model.py` prints a standardized report of model internals (parameter counts, vocabulary size, embedding dimension, layer layout) without needing a dataset.
+- **Tokenizer inspection** — `src/inspect_tokenizer.py` shows how a sentence is split into tokens, each token's vocabulary id, and its token embedding vector (or the index and vector of a single token).
 - **Pre / post fine-tuning comparison** — test the base model before fine-tuning, then compare responses side by side with the fine-tuned model to measure improvement.
 - **Interactive inference** — `src/inference.py` keeps the model loaded and accepts prompts in a loop by default; use `--no_interactive` for one-shot batch runs.
 - **Evaluation split** — automatic train/test split with best-model selection based on eval loss.
@@ -208,12 +210,16 @@ fine-tuning-playground/
 ├── src/                      # Source scripts
 │   ├── train.py              # Full SFT pipeline (single file, top-to-bottom)
 │   ├── inference.py          # Interactive inference + base/finetuned/compare modes
-│   └── inspect_model.py      # Model internals inspection (params, vocab, dims, config)
+│   ├── inspect_model.py      # Model internals inspection (params, vocab, dims, config)
+│   └── inspect_tokenizer.py  # Tokenizer inspection (token pieces, ids, embedding vectors)
 ├── data/                     # Training datasets and generators
 │   ├── ntnu_dataset.jsonl    # Bundled NTNU ChatML dataset (~1.2K examples)
-│   ├── generate_ntnu_dataset.py
-│   ├── ntnu_extended_records.py
-│   └── ntnu_massive_records{1-4}.py
+│   ├── full_dataset.jsonl    # Aggregated NTNU + Taiwan dataset (~1.7K examples)
+│   ├── generate_ntnu_dataset.py  # Aggregates ntnu/ + taiwan/ into full_dataset.jsonl
+│   ├── restructure_dataset.py    # Splits ntnu_dataset.jsonl into categorized files
+│   ├── ntnu/                 # Categorized NTNU JSONL files
+│   ├── taiwan/               # Categorized Taiwan JSONL files
+│   └── _archive/             # Legacy record generator modules
 ├── models/                   # Fine-tuned LoRA adapters (gitignored)
 ├── scripts/                  # install_deps.* / train_preset.*
 ├── README.md                 # This file
@@ -228,7 +234,9 @@ fine-tuning-playground/
 
 **`src/inspect_model.py`** — Model inspection script that prints a detailed, standardized English report of a model's internals: total / trainable / frozen parameter counts, token embedding shape and memory estimate, vocabulary size, layer layout, attention and FFN configuration, RoPE settings, and tokenizer metadata (special tokens, padding side, chat template). Useful for verifying a downloaded model before training. CLI flags: `--model_id`, `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_load` (config + tokenizer only).
 
-**`data/`** — Contains the bundled `ntnu_dataset.jsonl` (~1,252 ChatML records about National Taiwan Normal University) and scripts to regenerate it (`generate_ntnu_dataset.py`, `ntnu_extended_records.py`, `ntnu_massive_records{1-4}.py`).
+**`src/inspect_tokenizer.py`** — Tokenizer inspection script that prints how a sentence is split into tokens (with each token's vocabulary id) and, for every token, its token embedding vector (shape, dtype, norm, and values) pulled from the model's input embedding layer. Also supports looking up a single token by string (`--token`) or by id (`--token_id`) to see its index position and vector. Byte-level tokens are displayed in readable form (GPT-style `Ġ` space prefixes become spaces). CLI flags: `--model_id`, `--sentence`, `--token`, `--token_id`, `--vector_limit` (elements per vector; `0` = all), `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_model` (tokenization and ids only).
+
+**`data/`** — Contains the bundled `ntnu_dataset.jsonl` (~1,252 ChatML records about National Taiwan Normal University), the aggregated `full_dataset.jsonl` (~1.7K records covering NTNU plus Taiwan universities and districts), and the scripts that manage them: `restructure_dataset.py` splits `ntnu_dataset.jsonl` into categorized JSONL files under `ntnu/` and `taiwan/` (and generates new data for all Taiwan universities and districts), while `generate_ntnu_dataset.py` re-aggregates those organized subdirectories into the single `full_dataset.jsonl` training file. `_archive/` holds legacy record generator modules (`ntnu_extended_records.py`, `ntnu_massive_records{1-4}.py`) kept for reference.
 
 **`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — Named training presets for common GPU tiers and model sizes. Override the dataset with `DATASET_PATH=./data/my.jsonl`.
 
@@ -247,7 +255,7 @@ fine-tuning-playground/
 | | `lora_alpha` | `32` | LoRA scaling factor (commonly 2 × r) |
 | | `lora_dropout` | `0.05` | Dropout for LoRA layers |
 | | `target_modules` | All 7 linear layers | Comma-separated module names (e.g. `q_proj,k_proj,v_proj,o_proj`) |
-| **Data** | `dataset_path` | _(required)_ | Local file or HF dataset name (local paths must start with `./`, `.`, or `/`) |
+| **Data** | `dataset_path` | _(required)_ | Local JSON/JSONL file, directory of JSONL files (recursive), or HF dataset name (local paths must start with `./`, `.`, or `/`) |
 | | `dataset_format` | `chat` | Input format: `chat`, `alpaca`, or `text` |
 | | `test_split` | `0.05` | Fraction for evaluation (0 = no eval) |
 | | `max_seq_length` | `4096` | Max token length for each example |
@@ -290,6 +298,22 @@ fine-tuning-playground/
 | `torch_dtype` | `float32` | Computation dtype when loading weights |
 | `device` | `None` (auto) | `gpu`, `cpu`, or auto-detect |
 | `no_load` | `False` | Print configuration and tokenizer report only; do not load weights |
+
+### Tokenizer Inspection (`src/inspect_tokenizer.py`)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier to inspect |
+| `sentence` | — | Sentence to tokenize; prints each token piece, its id, and its vector |
+| `token` | — | Single token string to look up (index/position and vector) |
+| `token_id` | — | Single token id to look up (token string and vector) |
+| `vector_limit` | `8` | Vector elements to print per token (`0` prints the entire vector) |
+| `load_in_4bit` | `False` | Load the model in 4-bit quantization |
+| `torch_dtype` | `float32` | Computation dtype when loading the model |
+| `device` | `None` (auto) | `gpu`, `cpu`, or auto-detect |
+| `no_model` | `False` | Show tokenization and ids only; do not load the model (no vectors) |
+
+At least one of `--sentence`, `--token`, or `--token_id` is required.
 
 > **Note:** Both `src/train.py` and `src/inference.py` default `--model_id` to `Qwen/Qwen3.5-0.8B` (CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`, and use the **same** `--model_id` at inference. In `src/inference.py`, omitting `--prompt` skips batch tests and goes straight to the interactive loop; with `--no_interactive` and no `--prompt`, two built-in NTNU test prompts are used.
 
@@ -629,6 +653,15 @@ python src/train.py \
     --output_dir ./my-finetuned-model
 ```
 
+`--dataset_path` also accepts a directory of JSONL files (scanned recursively), so the whole `data/` tree can be passed directly:
+
+```bash
+python src/train.py \
+    --model_id Qwen/Qwen3.5-4B \
+    --dataset_path ./data \
+    --output_dir ./models/ntnu
+```
+
 ### Training with Alpaca Dataset
 
 ```bash
@@ -723,6 +756,36 @@ The report covers three sections:
 - **Model configuration** — vocabulary size, hidden (embedding) dimension, number of layers / attention heads / KV heads, head dimension, intermediate (FFN) size, max position embeddings, context length, activation function, RoPE theta, and whether word embeddings are tied.
 - **Tokenizer** — tokenizer class, vocabulary size, padding / truncation side, chat template availability, and special tokens with their IDs.
 - **Model weights** (skipped with `--no_load`) — model class, total / trainable / frozen parameter counts and trainable ratio, token embedding shape, embedding memory estimate, parameter and embedding dtypes, and device placement.
+
+### Inspecting the Tokenizer
+
+`src/inspect_tokenizer.py` shows how a sentence is split into tokens and what each token looks like to the model — its vocabulary id and its token embedding vector (the input row the model reads). Byte-level tokens are shown in readable form (`Ġ` space prefixes become spaces).
+
+```bash
+# Tokenize a sentence (Traditional Chinese); print each token piece, its id, and its embedding vector
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "請告訴我國立台灣師範大學的具體位置在哪裡？"
+
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "國立台灣師範大學的具體位置在哪裡？"
+
+# Tokenize an English sentence
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Where is the National Taiwan Normal University?"
+
+# Look up a single token string -> its index (id) and vector
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "台"
+
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "臺"
+
+# Look up a single token id -> its token string and vector
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token_id 120573
+
+# Print the entire vector instead of the first 8 elements
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello" --vector_limit 0
+
+# Tokenization + ids only (fast; skips the model download/load)
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello world" --no_model
+```
+
+For each token the output shows the token text, its vocabulary id, and its embedding vector (values plus shape, dtype, and norm/mean/std statistics). Use `--vector_limit 0` to print all elements of the vector.
 
 ---
 

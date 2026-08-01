@@ -32,6 +32,7 @@
   - [推論 — 單次執行（--no_interactive）](#推論-單次執行no_interactive)
   - [啟用思考模式推論](#啟用思考模式推論)
   - [檢查模型](#檢查模型)
+  - [檢查分詞器](#檢查分詞器)
 - [進階用法](#進階用法)
   - [自訂 LoRA 目標模組](#自訂-lora-目標模組)
   - [推送至 Hugging Face Hub](#推送至-hugging-face-hub)
@@ -66,6 +67,7 @@
 - **CPU 備援** — 若無 CUDA，訓練與推論會自動改以 CPU 全精度執行（速度極慢，僅建議用於冒煙測試）。
 - **單檔訓練腳本** — `src/train.py` 由上而下執行完整 SFT 流程，適合講解微調各步驟。
 - **模型檢查** — `src/inspect_model.py` 輸出模型內部的標準化報告（參數量、詞表大小、嵌入維度、層級結構），無需準備資料集。
+- **分詞器檢查** — `src/inspect_tokenizer.py` 顯示句子被切分為哪些 token、每個 token 的詞表編號，以及每個 token 的嵌入向量（或單一 token 的 index 位置與向量）。
 - **微調前後對比** — 可先測試微調前的基底模型，再與微調後的模型進行逐題對比，量化改善幅度。
 - **互動式推論** — `src/inference.py` 預設在載入模型後進入提示詞輸入迴圈；使用 `--no_interactive` 可改為單次批次推論後退出。
 - **評估資料分割** — 自動將資料集分割為訓練集與測試集，並根據評估損失選取最佳模型。
@@ -195,12 +197,16 @@ fine-tuning-playground/
 ├── src/                      # 原始碼腳本
 │   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
 │   ├── inference.py          # 互動式推論 + 微調前/後/對比模式
-│   └── inspect_model.py      # 模型內部檢查（參數量、詞表、維度、設定）
+│   ├── inspect_model.py      # 模型內部檢查（參數量、詞表、維度、設定）
+│   └── inspect_tokenizer.py  # 分詞器檢查（token 片段、編號、嵌入向量）
 ├── data/                     # 訓練資料集與產生器
 │   ├── ntnu_dataset.jsonl    # 內附臺師大 ChatML 資料集（約 1.2K 筆）
-│   ├── generate_ntnu_dataset.py
-│   ├── ntnu_extended_records.py
-│   └── ntnu_massive_records{1-4}.py
+│   ├── full_dataset.jsonl    # 臺師大 + 全臺分類彙整資料集（約 1.7K 筆）
+│   ├── generate_ntnu_dataset.py  # 彙整 ntnu/ + taiwan/ 為 full_dataset.jsonl
+│   ├── restructure_dataset.py    # 將 ntnu_dataset.jsonl 拆成分類檔
+│   ├── ntnu/                 # 臺師大分類 JSONL 檔
+│   ├── taiwan/               # 臺灣分類 JSONL 檔
+│   └── _archive/             # 舊版紀錄產生模組
 ├── models/                   # 微調後的 LoRA 適配器（已加入 .gitignore）
 ├── scripts/                  # install_deps.* / train_preset.*
 ├── README.md                 # 英文文件
@@ -215,7 +221,9 @@ fine-tuning-playground/
 
 **`src/inspect_model.py`** — 模型檢查腳本，輸出模型內部的詳細標準化報告：總/可訓練/凍結參數量、token 嵌入形狀與記憶體估算、詞表大小、層級結構、注意力與 FFN 設定、RoPE 參數，以及分詞器中繼資料（特殊 token、padding 方向、chat template）。適合在訓練前驗證下載的模型。CLI 旗標：`--model_id`、`--load_in_4bit`、`--torch_dtype`、`--device`、`--no_load`（僅輸出設定與分詞器）。
 
-**`data/`** — 包含內附的 `ntnu_dataset.jsonl`（約 1,252 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`ntnu_extended_records.py`、`ntnu_massive_records{1-4}.py`）。
+**`src/inspect_tokenizer.py`** — 分詞器檢查腳本，輸出句子被切分為哪些 token（附每個 token 的詞表編號），並自模型的輸入嵌入層取出每個 token 的嵌入向量（形狀、dtype、範數與數值）。也支援以 `--token`（字串）或 `--token_id`（編號）查詢單一 token 的 index 位置與向量。byte-level token 會以可讀形式顯示（GPT 風格的 `Ġ` 空格前綴會轉為空格）。CLI 旗標：`--model_id`、`--sentence`、`--token`、`--token_id`、`--vector_limit`（每個向量輸出幾個元素；`0` = 全部）、`--load_in_4bit`、`--torch_dtype`、`--device`、`--no_model`（僅輸出 token 化與編號）。
+
+**`data/`** — 包含內附的 `ntnu_dataset.jsonl`（約 1,252 筆關於國立臺灣師範大學的 ChatML 紀錄）、彙整後的 `full_dataset.jsonl`（約 1.7K 筆，涵蓋臺師大與全臺各大專院校、縣市），以及管理這些資料的腳本：`restructure_dataset.py` 將 `ntnu_dataset.jsonl` 拆分為 `ntnu/` 與 `taiwan/` 下的分類 JSONL 檔（並為全臺各大學與縣市產生新資料），`generate_ntnu_dataset.py` 再將這些分類子目錄彙整為單一的 `full_dataset.jsonl` 訓練檔。`_archive/` 存放舊版紀錄產生模組（`ntnu_extended_records.py`、`ntnu_massive_records{1-4}.py`）供參考。
 
 **`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — 針對常見 GPU 等級與模型規模的具名訓練預設。可用 `DATASET_PATH=./data/my.jsonl` 覆寫資料集路徑。
 
@@ -234,7 +242,7 @@ fine-tuning-playground/
 | | `lora_alpha` | `32` | LoRA 縮放因子（通常設為 2 × r） |
 | | `lora_dropout` | `0.05` | LoRA 層的 dropout 比率 |
 | | `target_modules` | 全部 7 個線性層 | 逗號分隔的模組名稱（例如 `q_proj,k_proj,v_proj,o_proj`） |
-| **資料** | `dataset_path` | （必填） | 本機檔案路徑或 HF 資料集名稱（本機路徑須以 `./`、`.` 或 `/` 開頭） |
+| **資料** | `dataset_path` | （必填） | 本機 JSON/JSONL 檔案、JSONL 檔目錄（遞迴掃描），或 HF 資料集名稱（本機路徑須以 `./`、`.` 或 `/` 開頭） |
 | | `dataset_format` | `chat` | 輸入格式：`chat`、`alpaca` 或 `text` |
 | | `test_split` | `0.05` | 保留為評估集的比例（0 = 不評估） |
 | | `max_seq_length` | `4096` | 每個範例的最大 token 數 |
@@ -277,6 +285,22 @@ fine-tuning-playground/
 | `torch_dtype` | `float32` | 載入權重時使用的計算精度 |
 | `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
 | `no_load` | `False` | 僅輸出設定與分詞器報告，不載入權重 |
+
+### 分詞器檢查（`src/inspect_tokenizer.py`）
+
+| 參數 | 預設值 | 說明 |
+|---|---|---|
+| `model_id` | `Qwen/Qwen3.5-0.8B` | 要檢查的 Hugging Face 模型識別碼 |
+| `sentence` | — | 要分詞的句子；輸出每個 token 片段、編號與向量 |
+| `token` | — | 要查詢的單一 token 字串（index 位置與向量） |
+| `token_id` | — | 要查詢的單一 token 編號（token 字串與向量） |
+| `vector_limit` | `8` | 每個 token 輸出幾個向量元素（`0` 輸出完整向量） |
+| `load_in_4bit` | `False` | 以 4-bit 量化載入模型 |
+| `torch_dtype` | `float32` | 載入模型時使用的計算精度 |
+| `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
+| `no_model` | `False` | 僅輸出 token 化與編號，不載入模型（無向量） |
+
+`--sentence`、`--token`、`--token_id` 三者至少需提供其一。
 
 > **備註：** `src/train.py` 與 `src/inference.py` 的 `--model_id` 預設皆為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`，推論時也須使用**相同**的 `--model_id`。在 `src/inference.py` 中，省略 `--prompt` 會跳過批次測試並直接進入互動迴圈；搭配 `--no_interactive` 且未提供 `--prompt` 時，會使用兩條內建的 NTNU 測試提示。
 
@@ -616,6 +640,15 @@ python src/train.py \
     --output_dir ./my-finetuned-model
 ```
 
+`--dataset_path` 也接受 JSONL 檔的目錄（遞迴掃描），因此可直接傳入整個 `data/` 目錄樹：
+
+```bash
+python src/train.py \
+    --model_id Qwen/Qwen3.5-4B \
+    --dataset_path ./data \
+    --output_dir ./models/ntnu
+```
+
 ### 使用 Alpaca 資料集訓練
 
 ```bash
@@ -710,6 +743,36 @@ python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
 - **模型設定** — 詞表大小、隱藏（嵌入）維度、層數 / 注意力頭數 / KV 頭數、頭維度、中間（FFN）尺寸、最大位置嵌入、脈絡長度、活化函數、RoPE theta、是否綁定詞嵌入。
 - **分詞器** — 分詞器類別、詞表大小、padding / truncation 方向、chat template 是否可用，以及特殊 token 及其 ID。
 - **模型權重**（`--no_load` 時略過） — 模型類別、總 / 可訓練 / 凍結參數量與可訓練比例、token 嵌入形狀、嵌入記憶體估算、參數與嵌入 dtype、裝置位置。
+
+### 檢查分詞器
+
+`src/inspect_tokenizer.py` 顯示句子被切分為哪些 token，以及每個 token 對模型而言的樣貌——其詞表編號與 token 嵌入向量（模型所讀取的輸入列）。byte-level token 會以可讀形式顯示（`Ġ` 空格前綴轉為空格）。
+
+```bash
+# 將繁體中文句子分詞；輸出每個 token 片段、編號與嵌入向量
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "請告訴我國立台灣師範大學的具體位置在哪裡？"
+
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "國立台灣師範大學的具體位置在哪裡？"
+
+# 將英文句子分詞
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Where is the National Taiwan Normal University?"
+
+# 查詢單一 token 字串 -> 其 index（編號）與向量
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "台"
+
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "臺"
+
+# 查詢單一 token 編號 -> 其 token 字串與向量
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token_id 120573
+
+# 輸出完整向量（而非僅前 8 個元素）
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello" --vector_limit 0
+
+# 僅 token 化 + 編號（快速；略過模型下載/載入）
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello world" --no_model
+```
+
+每個 token 的輸出包含 token 文字、詞表編號，以及嵌入向量（數值加上形狀、dtype 與範數 / 平均 / 標準差統計）。使用 `--vector_limit 0` 可印出向量的全部元素。
 
 ---
 
