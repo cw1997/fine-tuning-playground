@@ -31,6 +31,7 @@
   - [推論 — 互動式（預設）](#推論-互動式預設)
   - [推論 — 單次執行（--no_interactive）](#推論-單次執行no_interactive)
   - [啟用思考模式推論](#啟用思考模式推論)
+  - [檢查模型](#檢查模型)
 - [進階用法](#進階用法)
   - [自訂 LoRA 目標模組](#自訂-lora-目標模組)
   - [推送至 Hugging Face Hub](#推送至-hugging-face-hub)
@@ -64,6 +65,7 @@
 - **命令列優先設計** — 所有超參數皆可透過命令列旗標設定，無需撰寫 YAML 設定檔。
 - **CPU 備援** — 若無 CUDA，訓練與推論會自動改以 CPU 全精度執行（速度極慢，僅建議用於冒煙測試）。
 - **單檔訓練腳本** — `src/train.py` 由上而下執行完整 SFT 流程，適合講解微調各步驟。
+- **模型檢查** — `src/inspect_model.py` 輸出模型內部的標準化報告（參數量、詞表大小、嵌入維度、層級結構），無需準備資料集。
 - **微調前後對比** — 可先測試微調前的基底模型，再與微調後的模型進行逐題對比，量化改善幅度。
 - **互動式推論** — `src/inference.py` 預設在載入模型後進入提示詞輸入迴圈；使用 `--no_interactive` 可改為單次批次推論後退出。
 - **評估資料分割** — 自動將資料集分割為訓練集與測試集，並根據評估損失選取最佳模型。
@@ -192,7 +194,8 @@ fine-tuning-playground/
 ├── requirements.txt          # Python 套件依賴列表
 ├── src/                      # 原始碼腳本
 │   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
-│   └── inference.py          # 互動式推論 + 微調前/後/對比模式
+│   ├── inference.py          # 互動式推論 + 微調前/後/對比模式
+│   └── inspect_model.py      # 模型內部檢查（參數量、詞表、維度、設定）
 ├── data/                     # 訓練資料集與產生器
 │   ├── ntnu_dataset.jsonl    # 內附臺師大 ChatML 資料集（約 1.2K 筆）
 │   ├── generate_ntnu_dataset.py
@@ -209,6 +212,8 @@ fine-tuning-playground/
 **`src/train.py`** — 完整的監督式微調流程，全部寫在一個檔案中。依序執行：SSL 修復 → 解析命令列參數 → 偵測裝置 → 載入分詞器 → 載入基座模型（可選 4-bit）→ 套用 LoRA → 載入並格式化資料集 → 設定 `SFTTrainer` → 訓練 → 儲存適配器。所有超參數皆為 CLI 旗標，無獨立設定模組。
 
 **`src/inference.py`** — 獨立推論腳本，支援基底模型、微調後模型或並排對比。預設在載入模型後進入互動式提示詞迴圈（`You:` 提示；輸入 `quit` / `exit` / `q` 退出）。CLI 旗標：`--mode`（`base` / `finetuned` / `compare`）、`--model_id`、`--adapter_path`、`--prompt`、`--no_interactive`、`--load_in_4bit`、`--use_thinking`、`--max_new_tokens`、`--temperature`、`--top_p`、`--device`、`--torch_dtype`。
+
+**`src/inspect_model.py`** — 模型檢查腳本，輸出模型內部的詳細標準化報告：總/可訓練/凍結參數量、token 嵌入形狀與記憶體估算、詞表大小、層級結構、注意力與 FFN 設定、RoPE 參數，以及分詞器中繼資料（特殊 token、padding 方向、chat template）。適合在訓練前驗證下載的模型。CLI 旗標：`--model_id`、`--load_in_4bit`、`--torch_dtype`、`--device`、`--no_load`（僅輸出設定與分詞器）。
 
 **`data/`** — 包含內附的 `ntnu_dataset.jsonl`（約 1,252 筆關於國立臺灣師範大學的 ChatML 紀錄）以及重新產生資料集的腳本（`generate_ntnu_dataset.py`、`ntnu_extended_records.py`、`ntnu_massive_records{1-4}.py`）。
 
@@ -262,6 +267,16 @@ fine-tuning-playground/
 | | `top_p` | `0.9` | 核取樣（nucleus sampling）閾值 |
 | | `use_thinking` | `False` | 啟用思考模式 |
 | | `no_interactive` | `False` | 批次推論後直接退出，不進入互動迴圈 |
+
+### 檢查（`src/inspect_model.py`）
+
+| 參數 | 預設值 | 說明 |
+|---|---|---|
+| `model_id` | `Qwen/Qwen3.5-0.8B` | 要檢查的 Hugging Face 模型識別碼 |
+| `load_in_4bit` | `False` | 以 4-bit 量化載入權重（查看量化後的參數量） |
+| `torch_dtype` | `float32` | 載入權重時使用的計算精度 |
+| `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
+| `no_load` | `False` | 僅輸出設定與分詞器報告，不載入權重 |
 
 > **備註：** `src/train.py` 與 `src/inference.py` 的 `--model_id` 預設皆為 `Qwen/Qwen3.5-0.8B`（適合 CPU 冒煙測試）。GPU 訓練請傳入 `--model_id Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`，推論時也須使用**相同**的 `--model_id`。在 `src/inference.py` 中，省略 `--prompt` 會跳過批次測試並直接進入互動迴圈；搭配 `--no_interactive` 且未提供 `--prompt` 時，會使用兩條內建的 NTNU 測試提示。
 
@@ -674,6 +689,27 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --use_thinking True \
     --prompt "台灣師范大學的地址是什麼"
 ```
+
+### 檢查模型
+
+`src/inspect_model.py` 無需準備資料集即可輸出模型內部的標準化報告，適合在訓練前驗證下載的檢查點。
+
+```bash
+# 設定 + 分詞器 + 權重（預設）
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B
+
+# 僅設定 + 分詞器（快速；略過權重下載/載入）
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --no_load
+
+# 以 4-bit 量化載入，檢查量化後的參數量
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
+```
+
+報告包含三個區段：
+
+- **模型設定** — 詞表大小、隱藏（嵌入）維度、層數 / 注意力頭數 / KV 頭數、頭維度、中間（FFN）尺寸、最大位置嵌入、脈絡長度、活化函數、RoPE theta、是否綁定詞嵌入。
+- **分詞器** — 分詞器類別、詞表大小、padding / truncation 方向、chat template 是否可用，以及特殊 token 及其 ID。
+- **模型權重**（`--no_load` 時略過） — 模型類別、總 / 可訓練 / 凍結參數量與可訓練比例、token 嵌入形狀、嵌入記憶體估算、參數與嵌入 dtype、裝置位置。
 
 ---
 

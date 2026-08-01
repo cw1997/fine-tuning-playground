@@ -37,6 +37,7 @@ A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3
     - [Inference — Interactive (Default)](#inference--interactive-default)
     - [Inference — One-Shot (`--no_interactive`)](#inference--one-shot---no_interactive)
     - [Inference with Thinking Mode](#inference-with-thinking-mode)
+    - [Inspecting a Model](#inspecting-a-model)
   - [Advanced Usage](#advanced-usage)
     - [Custom LoRA Target Modules](#custom-lora-target-modules)
     - [Push to Hugging Face Hub](#push-to-hugging-face-hub)
@@ -70,6 +71,7 @@ This project provides a complete fine-tuning pipeline that lets you adapt these 
 - **CLI-first design** — all hyperparameters configurable via command-line flags; no YAML files needed.
 - **CPU fallback** — when CUDA is unavailable, training and inference automatically fall back to full-precision CPU (slow; intended for smoke tests).
 - **Single-file training script** — `src/train.py` runs the full SFT pipeline sequentially, ideal for walking through each step when teaching fine-tuning.
+- **Model inspection** — `src/inspect_model.py` prints a standardized report of model internals (parameter counts, vocabulary size, embedding dimension, layer layout) without needing a dataset.
 - **Pre / post fine-tuning comparison** — test the base model before fine-tuning, then compare responses side by side with the fine-tuned model to measure improvement.
 - **Interactive inference** — `src/inference.py` keeps the model loaded and accepts prompts in a loop by default; use `--no_interactive` for one-shot batch runs.
 - **Evaluation split** — automatic train/test split with best-model selection based on eval loss.
@@ -205,7 +207,8 @@ fine-tuning-playground/
 ├── requirements.txt          # Python package dependencies
 ├── src/                      # Source scripts
 │   ├── train.py              # Full SFT pipeline (single file, top-to-bottom)
-│   └── inference.py          # Interactive inference + base/finetuned/compare modes
+│   ├── inference.py          # Interactive inference + base/finetuned/compare modes
+│   └── inspect_model.py      # Model internals inspection (params, vocab, dims, config)
 ├── data/                     # Training datasets and generators
 │   ├── ntnu_dataset.jsonl    # Bundled NTNU ChatML dataset (~1.2K examples)
 │   ├── generate_ntnu_dataset.py
@@ -222,6 +225,8 @@ fine-tuning-playground/
 **`src/train.py`** — The complete supervised fine-tuning pipeline in one file. Runs sequentially: SSL fix → parse CLI args → detect device → load tokenizer → load base model (optional 4-bit) → apply LoRA → load & format dataset → configure `SFTTrainer` → train → save adapter. All hyperparameters are CLI flags; no separate config module.
 
 **`src/inference.py`** — Standalone inference script for base model, fine-tuned model, or side-by-side comparison. By default, enters an interactive prompt loop after loading (`You:` prompt; type `quit` / `exit` / `q` to stop). CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--no_interactive`, `--load_in_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`, `--device`, `--torch_dtype`.
+
+**`src/inspect_model.py`** — Model inspection script that prints a detailed, standardized English report of a model's internals: total / trainable / frozen parameter counts, token embedding shape and memory estimate, vocabulary size, layer layout, attention and FFN configuration, RoPE settings, and tokenizer metadata (special tokens, padding side, chat template). Useful for verifying a downloaded model before training. CLI flags: `--model_id`, `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_load` (config + tokenizer only).
 
 **`data/`** — Contains the bundled `ntnu_dataset.jsonl` (~1,252 ChatML records about National Taiwan Normal University) and scripts to regenerate it (`generate_ntnu_dataset.py`, `ntnu_extended_records.py`, `ntnu_massive_records{1-4}.py`).
 
@@ -275,6 +280,16 @@ fine-tuning-playground/
 | | `top_p` | `0.9` | Nucleus sampling threshold |
 | | `use_thinking` | `False` | Enable thinking mode in chat template |
 | | `no_interactive` | `False` | Exit after batch inference instead of entering the prompt loop |
+
+### Inspection (`src/inspect_model.py`)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier to inspect |
+| `load_in_4bit` | `False` | Load weights in 4-bit quantization (for quantized parameter counts) |
+| `torch_dtype` | `float32` | Computation dtype when loading weights |
+| `device` | `None` (auto) | `gpu`, `cpu`, or auto-detect |
+| `no_load` | `False` | Print configuration and tokenizer report only; do not load weights |
 
 > **Note:** Both `src/train.py` and `src/inference.py` default `--model_id` to `Qwen/Qwen3.5-0.8B` (CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`, and use the **same** `--model_id` at inference. In `src/inference.py`, omitting `--prompt` skips batch tests and goes straight to the interactive loop; with `--no_interactive` and no `--prompt`, two built-in NTNU test prompts are used.
 
@@ -687,6 +702,27 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --use_thinking True \
     --prompt "台灣師范大學的地址是什麼"
 ```
+
+### Inspecting a Model
+
+`src/inspect_model.py` prints a standardized report of a model's internals without needing any dataset. Useful to verify a downloaded checkpoint before training.
+
+```bash
+# Config + tokenizer + weights (default)
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B
+
+# Config + tokenizer only (fast; skips weight download/loading)
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --no_load
+
+# Load with 4-bit quantization to inspect quantized parameter counts
+python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
+```
+
+The report covers three sections:
+
+- **Model configuration** — vocabulary size, hidden (embedding) dimension, number of layers / attention heads / KV heads, head dimension, intermediate (FFN) size, max position embeddings, context length, activation function, RoPE theta, and whether word embeddings are tied.
+- **Tokenizer** — tokenizer class, vocabulary size, padding / truncation side, chat template availability, and special tokens with their IDs.
+- **Model weights** (skipped with `--no_load`) — model class, total / trainable / frozen parameter counts and trainable ratio, token embedding shape, embedding memory estimate, parameter and embedding dtypes, and device placement.
 
 ---
 

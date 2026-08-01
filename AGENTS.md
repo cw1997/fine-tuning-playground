@@ -71,7 +71,8 @@ warnings.filterwarnings("ignore", message=".*triton not found.*")
 fine-tuning-playground/
 ├── src/                    # Source code
 │   ├── train.py            # SFT training pipeline (single-file, CLI-driven)
-│   └── inference.py        # Inference script (base / finetuned / compare modes)
+│   ├── inference.py        # Inference script (base / finetuned / compare modes)
+│   └── inspect_model.py    # Model internals inspection (params, vocab, dims, config)
 ├── data/                   # Datasets and generators
 │   ├── generate_ntnu_dataset.py  # Dataset generator script
 │   ├── ntnu_extended_records.py  # Extended Q&A records module
@@ -94,3 +95,20 @@ fine-tuning-playground/
 2. Add CLI argument for every new hyperparameter
 3. Write Google-style docstrings for all new functions
 4. Keep comments in English only
+
+## README Maintenance
+
+- **`README.md` MUST be kept in sync with the codebase.** Whenever any source file, script, dataset, or configuration under this repository changes, update the corresponding sections of `README.md` in the same change:
+  - Add new files to the **Project Structure** tree and **File Descriptions**
+  - Document new CLI flags in the relevant **Configuration** table
+  - Add usage examples for new functionality
+  - Update feature bullets, Quick Start, and Troubleshooting tables when behavior changes
+- If `README.zh-Hant.md` exists, update it to match the English `README.md` as well (translations only; no new content).
+- The rule applies to **every** change, not just user-visible features. Never ship a code change that leaves `README.md` out of date.
+
+## Requirements Maintenance
+
+- **`requirements.txt` MUST be kept in sync with the codebase.** Whenever a change introduces a new third-party import (a package not already declared), add it to `requirements.txt` in the same change.
+- Use minimum version pins with `>=` (e.g., `transformers>=4.47.0`), never exact versions.
+- Reuse existing declared packages when possible; only add a new entry when the dependency is genuinely new and directly imported.
+- If a package becomes unused after a refactor, consider removing its entry from `requirements.txt` in the same change.
