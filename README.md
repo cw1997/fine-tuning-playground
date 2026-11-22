@@ -189,10 +189,10 @@ bash scripts/train_preset.sh gpu-12gb-4b
 # python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/gpu-12gb-4b
 
 # 6. Run inference with the base model (before fine-tuning) — save the output for comparison
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師范大學的地址是什麼" --no_interactive
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師範大學的地址是什麼" --no_interactive
 
 # 7. Run inference with the fine-tuned model — compare with step 6
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b --prompt "台灣師范大學的地址是什麼" --no_interactive
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b --prompt "台灣師範大學的地址是什麼" --no_interactive
 
 # 8. Interactive chat with the fine-tuned model (type quit to exit)
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b
@@ -699,7 +699,7 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
 
 # Base model — run one prompt, then continue interactively
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-    --prompt "台灣師范大學的地址是什麼"
+    --prompt "台灣師範大學的地址是什麼"
 
 # Compare mode — each input shows base vs fine-tuned responses
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
@@ -713,12 +713,12 @@ For scripts, CI, or quick baseline comparisons, pass `--no_interactive` to run b
 ```bash
 # Base model baseline (before fine-tuning)
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-    --prompt "台灣師范大學的地址是什麼" --no_interactive
+    --prompt "台灣師範大學的地址是什麼" --no_interactive
 
 # Fine-tuned model (after training)
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --adapter_path ./my-finetuned-model \
-    --prompt "台灣師范大學的地址是什麼" --no_interactive
+    --prompt "台灣師範大學的地址是什麼" --no_interactive
 
 # Side-by-side comparison (batch mode, built-in test prompts)
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
@@ -733,7 +733,7 @@ To enable Qwen3's chain-of-thought reasoning, pass `--use_thinking True`. Unless
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
     --adapter_path ./my-finetuned-model \
     --use_thinking True \
-    --prompt "台灣師范大學的地址是什麼"
+    --prompt "台灣師範大學的地址是什麼"
 ```
 
 ### Inspecting a Model
