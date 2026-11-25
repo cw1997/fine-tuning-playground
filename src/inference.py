@@ -24,12 +24,12 @@ from typing import Dict, List
 import torch
 from peft import PeftModel
 
+from device_utils import add_device_argument, parse_4bit, resolve_device
 from model_utils import (
     DEFAULT_MODEL_ID,
     fix_ssl_certificates,
     load_base_model,
     load_tokenizer,
-    resolve_device,
 )
 
 fix_ssl_certificates()
@@ -53,13 +53,12 @@ def parse_args() -> argparse.Namespace:
                         help="Inference mode")
     parser.add_argument("--adapter_path", type=str, default=None, help="LoRA adapter path")
     parser.add_argument("--prompt", type=str, default=None, help="Single test prompt")
-    parser.add_argument("--load_in_4bit", type=lambda x: x.lower() == "true", default=True,
-                        help="Use 4-bit quantization")
+    parser.add_argument("--load_in_4bit", type=parse_4bit,
+                        help="Use NF4 (enabled by default on NVIDIA CUDA)")
     parser.add_argument("--torch_dtype", type=str, default="bfloat16",
                         choices=["bfloat16", "float16", "float32"],
                         help="Computation precision")
-    parser.add_argument("--device", type=str, default=None, choices=["gpu", "cpu"],
-                        help="Compute device (auto-detected by default)")
+    add_device_argument(parser)
     parser.add_argument("--max_new_tokens", type=int, default=2048,
                         help="Maximum number of tokens to generate")
     parser.add_argument("--temperature", type=float, default=0.7,
@@ -92,7 +91,7 @@ def load_base_model_and_tokenizer(
     model_id: str,
     load_in_4bit: bool,
     compute_dtype: torch.dtype,
-    device_map: dict,
+    device_map: dict[str, str],
 ):
     """Load the base model and its tokenizer from Hugging Face.
 
@@ -322,12 +321,19 @@ def run_interactive_loop(
             print(f"Response:\n{response}")
 
 
-def main():
-    """Orchestrate the full inference pipeline: parse args, load model, and run the selected mode."""
+def main() -> None:
+    """Load the requested model and run batch or interactive inference.
+
+    Returns:
+        None.
+
+    Raises:
+        RuntimeError: If the requested backend or quantization is unavailable.
+    """
     args = parse_args()
-    device_map, _, load_in_4bit, compute_dtype = resolve_device(args)
+    config = resolve_device(args)
     base_model, tokenizer = load_base_model_and_tokenizer(
-        args.model_id, load_in_4bit, compute_dtype, device_map,
+        args.model_id, config.load_in_4bit, config.dtype, config.device_map,
     )
 
     ft_model = None

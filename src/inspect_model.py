@@ -18,12 +18,12 @@ from typing import Dict, Tuple
 import torch
 from transformers import AutoConfig
 
+from device_utils import add_device_argument, parse_4bit, resolve_device
 from model_utils import (
     DEFAULT_MODEL_ID,
     fix_ssl_certificates,
     load_base_model,
     load_tokenizer,
-    resolve_device,
 )
 
 fix_ssl_certificates()
@@ -38,11 +38,6 @@ _DTYPE_BYTES = {
 }
 
 
-def _str2bool(value: str) -> bool:
-    """Parse a CLI boolean string."""
-    return value.lower() == "true"
-
-
 def parse_args() -> argparse.Namespace:
     """Parse and return CLI arguments for the inspection script.
 
@@ -52,13 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect Qwen3 model internals")
     parser.add_argument("--model_id", type=str, default=DEFAULT_MODEL_ID,
                         help="Hugging Face model ID")
-    parser.add_argument("--load_in_4bit", type=_str2bool, default=False,
+    parser.add_argument("--load_in_4bit", type=parse_4bit, default=False,
                         help="Load the model in 4-bit quantization before inspecting")
     parser.add_argument("--torch_dtype", type=str, default="float32",
                         choices=["bfloat16", "float16", "float32"],
                         help="Computation precision")
-    parser.add_argument("--device", type=str, default=None, choices=["gpu", "cpu"],
-                        help="Compute device (auto-detected by default)")
+    add_device_argument(parser)
     parser.add_argument("--no_load", action="store_true",
                         help="Inspect configuration and tokenizer only; do not load weights")
     return parser.parse_args()
@@ -241,7 +235,7 @@ def inspect_model(model, tokenizer) -> None:
 def main() -> None:
     """Orchestrate the inspection: parse args, load config/model, print the report."""
     args = parse_args()
-    device_map, _, load_in_4bit, compute_dtype = resolve_device(args)
+    hardware = resolve_device(args)
 
     config = AutoConfig.from_pretrained(args.model_id, trust_remote_code=True)
     inspect_config(config)
@@ -251,7 +245,9 @@ def main() -> None:
 
     if not args.no_load:
         print(f"\nLoading model from {args.model_id}...")
-        model = load_base_model(args.model_id, load_in_4bit, compute_dtype, device_map)
+        model = load_base_model(
+            args.model_id, hardware.load_in_4bit, hardware.dtype, hardware.device_map,
+        )
         inspect_model(model, tokenizer)
     else:
         print(f"\nSkipping weight loading (--no_load specified).")

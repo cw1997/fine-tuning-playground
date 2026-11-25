@@ -1,0 +1,60 @@
+{"id":"F01","category":"fact","prompt":"一個導覽手冊把臺師大校本部的「生徒控所」標成當年的講堂。兩者各對應到現在的哪棟建築？","criteria":["生徒控所是文薈廳","講堂是禮堂"],"source":"https://pr.ntnu.edu.tw/reception/index.php?parent_id=560"}
+{"id":"F02","category":"fact","prompt":"臺師大美術館 2023 年把修復工作搬進展廳的那檔展覽，和校內哪一個專責中心合作？","criteria":["文物保存維護研究發展中心或文保中心"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/past_exhibit/open_restoration/"}
+{"id":"F03","category":"fact","prompt":"臺師大公館校區的用地，原來是哪一類農業機構的舊址？","criteria":["臺灣省農林廳蠶業改良場，亦稱蠶桑改良場"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=20022&mode=data"}
+{"id":"F04","category":"fact","prompt":"有別於後來的半圓形總館，臺師大在 1952 年興建的獨立館舍仿什麼時期的建築？","criteria":["文藝復興時期"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F05","category":"fact","prompt":"臺師大圖書館的鎮館三寶裡，宋版的那部書是什麼？","criteria":["《孟子集註》，接受宋版《孟子》"],"source":"https://libroot.lib.ntnu.edu.tw/enewspaper/news/librarynews.jsp?issue=BD37ABD9-999E-CBB3-DDE7-62F558A9AEA5"}
+{"id":"F06","category":"fact","prompt":"現在公館校區的理學院，前身初期由哪三個學系組成？","criteria":["數學","理化","博物"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=20022&mode=data"}
+{"id":"F07","category":"fact","prompt":"替師大美術館的識別標誌補上題字署名，依館方公佈資料應該填哪位教授？","criteria":["鄭善禧"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/about/"}
+{"id":"F08","category":"fact","prompt":"圖書館在 2023 年「探索館藏」展中擺出的鎮館三寶是直接展示原本，還是使用複製品？","criteria":["複製品"],"source":"https://libroot.lib.ntnu.edu.tw/enewspaper/news/librarynews.jsp?issue=BD37ABD9-999E-CBB3-DDE7-62F558A9AEA5"}
+{"id":"F09","category":"fact","prompt":"臺師大的林口圖書分館設立時，併進臺師大圖書館的是哪間大學的圖書館？","criteria":["國立僑生大學圖書館"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F10","category":"fact","prompt":"臺師大圖書館的半圓形八層總館在哪一年正式啟用？","criteria":["1984 年或民國 73 年"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F11","category":"fact","prompt":"臺師大圖書館的理學院分館七層新館，在哪一年落成啟用？","criteria":["1991 年或民國 80 年"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F12","category":"fact","prompt":"想去臺師大管理的梁實秋故居做建築導覽，走到雲和街幾號才對？","criteria":["11 號"],"source":"https://www.sdgs.ntnu.edu.tw/wp-content/uploads/2025/06/2024NTNU_SDAReport.pdf"}
+{"id":"F13","category":"fact","prompt":"梁實秋入住以前，臺師大的梁實秋故居最初由臺北高校用作什麼？","criteria":["教職員宿舍或英語教授富田義介的住所"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=21868&mode=data"}
+{"id":"F14","category":"fact","prompt":"臺師大文保中心的沿革資料裡，和美術系藝術文物修復室一起正式落成啟用是哪一年？","criteria":["2011 年或民國 100 年"],"source":"https://rcccr.ntnu.edu.tw/about_us/?title=history"}
+{"id":"F15","category":"fact","prompt":"校史志工想介紹臺師大在 2022 年舉辦的百年校慶校史文物特展。它的主標題叫什麼？","criteria":["百年珍藏 世紀開箱"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=21044&mode=data"}
+{"id":"F16","category":"fact","prompt":"查臺師大圖書館的跨校區調閱服務說明，收到一般圖書的到館通知後，系統原則上保留幾天讓讀者取書？","criteria":["七天，以系統通知為準"],"source":"https://www.lib.ntnu.edu.tw/borrow/borrow.autoadd.jsp?callno=428.751+704.2+V.2%28%E5%AD%B8%E7%94%9F%E4%BD%9C%E6%A5%AD%E7%B0%BF%29&id=BM0329019&store=%E7%B8%BD%E9%A4%A87F%E6%9B%B8%E6%9E%B6"}
+{"id":"F17","category":"fact","prompt":"臺師大圖書館善本古籍放在哪一層樓的哪種專用空間？","criteria":["總館八樓","善本書室或珍本室"],"source":"https://www.lib.ntnu.edu.tw/english/about/business_01_08.jsp"}
+{"id":"F18","category":"fact","prompt":"臺師大中等學校教育學程的實地學習說明採事前報備。活動資料應在開始前多久送審？","criteria":["一週前"],"source":"https://tecs.otecs.ntnu.edu.tw/upload/tep/otsl/otsl-1-a.htm"}
+{"id":"F19","category":"fact","prompt":"臺師大美術館標誌的三角構圖借用了校內哪一棟建築正門的元素？","criteria":["行政大樓"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/about/"}
+{"id":"F20","category":"fact","prompt":"師大美術館的典藏，主要見證臺師大哪些校園成員的美術創作？至少提到兩類。","criteria":["師生與校友之中至少兩類"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/about/"}
+{"id":"F21","category":"fact","prompt":"臺師大圖書館的展覽頁把《春華秋實》列成常設展。這個展名對應哪位作家的故居？","criteria":["梁實秋"],"source":"https://libroot.lib.ntnu.edu.tw/service/others_09.jsp"}
+{"id":"F22","category":"fact","prompt":"臺師大 2023 年開放修復展把修復師的工作搬進了展場。展覽實際選了哪位校友的哪件作品示範修復？","criteria":["林崇漢","〈滾滾長江東似水〉"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/past_exhibit/open_restoration/"}
+{"id":"F23","category":"fact","prompt":"依臺師大師資培育學院的實習說明，進入教育實習機構前，除了簽實習同意書，還應參加哪一類會議？","criteria":["師資培育大學辦理的行前說明會"],"source":"https://tecs.otecs.ntnu.edu.tw/page.aspx?id=275"}
+{"id":"F24","category":"fact","prompt":"參觀臺師大文薈廳時，導覽說臺北高校的學生當年有很高自治程度。是哪一項具體做法讓這個空間成為例子？","criteria":["學生自己訂定規則並管理生徒控所"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=18771&mode=data"}
+{"id":"F25","category":"fact","prompt":"依臺師大圖書館規定，善本原件只在指定閱覽區使用，需要填申請單。有位讀者問可否拿回家慢慢讀。請直接回答並提供校內閱覽方法。","criteria":["不可外借","填寫調閱申請後在指定區域閱覽"],"source":"https://www.lib.ntnu.edu.tw/english/about/business_01_08.jsp"}
+{"id":"F26","category":"fact","prompt":"臺師大善本每次最多三種、三十冊，到上限要先還舊書。讀者已經借閱三種二十一冊，還可同時調閱第四種嗎？","criteria":["不行","三種已達上限，即使還不到三十冊也須先還"],"source":"https://www.lib.ntnu.edu.tw/english/about/business_01_08.jsp"}
+{"id":"F27","category":"fact","prompt":"臺師大對有數位版本的善本通常提供數位版，嚴重蟲蛀或脆化的原件原則上不開放。一份有掃描且紙張脆化的書，應先安排讀者閱覽哪個版本？","criteria":["數位版","脆化原件原則不供閱覽"],"source":"https://www.lib.ntnu.edu.tw/english/about/business_01_08.jsp"}
+{"id":"F28","category":"fact","prompt":"臺師大圖書館說，利用本館善本進行研究者，研究完成後須致贈研究成果乙冊供典藏。請用白話寫一句給已結案的研究者。","criteria":["寄贈或交付一冊研究成果給臺師大圖書館典藏"],"source":"https://www.lib.ntnu.edu.tw/divisions/ntnuhistory_03.jsp"}
+{"id":"F29","category":"fact","prompt":"臺師大圖書館沿革記載，林口分館於 2006 年設立，理學院分館七層新館 1991 年已啟用。哪個事件先發生，相差幾年？","criteria":["理學院分館七層新館先","相差 15 年"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F30","category":"fact","prompt":"臺師大沿革這樣摘要：臺北高校 1922 年成立，1926 年遷古亭町；1946 年同址成立省立師範學院。請把前兩項排成兩行時間軸。","criteria":["第一行是 1922 年成立臺北高校","第二行是 1926 年遷古亭町","不把 1946 年列成第三項"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"F31","category":"fact","prompt":"臺師大校方的導覽資料將禮堂列為民國 86 年指定古蹟，行政大樓、普字樓與文薈廳列為民國 92 年。哪一棟屬較早那批，早幾年？","criteria":["禮堂","6 年"],"source":"https://pr.ntnu.edu.tw/reception/index.php?parent_id=560"}
+{"id":"F32","category":"fact","prompt":"臺師大永續年報記載，梁實秋故居 2004 年登錄歷史建築，2014 年對民眾開放。有人把登錄和開放年份寫反了，請給出更正。","criteria":["2004 年登錄","2014 年開放"],"source":"https://www.sdgs.ntnu.edu.tw/wp-content/uploads/2025/06/2024NTNU_SDAReport.pdf"}
+{"id":"F33","category":"fact","prompt":"臺師大美術館說，圖形中的三角元素取自行政大樓，連排的長方形取意於古蹟紅磚牆。請寫一句展籤，交代哪個形狀配哪項來源。","criteria":["三角形對應行政大樓","長方形對應古蹟紅磚牆"],"source":"https://www.artmuse.ntnu.edu.tw/index.php/about/"}
+{"id":"F34","category":"fact","prompt":"臺師大公開報導寫到：故居最初為臺北高校英語教授富田義介居所，戰後曾作臺灣省立師範學院的宿舍。有人說梁實秋是第一位住戶，依材料應如何更正？","criteria":["梁實秋並非最初住戶","最初住戶是富田義介"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=21868&mode=data"}
+{"id":"F35","category":"fact","prompt":"臺師大文件把 1955 年記為改制省立師範大學，1967 年記為改成國立。編輯想在 1958 年舊照片上加當時校名，該用什麼名稱？","criteria":["省立臺灣師範大學或臺灣省立師範大學"],"source":"https://pr.ntnu.edu.tw/news/index.php?id=13185&mode=data"}
+{"id":"F36","category":"fact","prompt":"臺師大圖書館展覽頁列出 2022 年的《百年珍藏 世紀開箱》與 2021 年的《承先啟後師大玖玖》。若觀展清單只選百年校慶那一檔，要選什麼？","criteria":["2022 年《百年珍藏 世紀開箱》"],"source":"https://libroot.lib.ntnu.edu.tw/service/others_09.jsp"}
+{"id":"F37","category":"fact","prompt":"臺師大校史報導指出，1955 年改制後分設教育、文、理三個學院。若海報只能列兩個非教育學院，應列哪兩個？","criteria":["文學院","理學院"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=20022&mode=data"}
+{"id":"F38","category":"fact","prompt":"臺師大公開報導記載，文薈廳落成於大正 15 年，也就是 1926 年，當時由學生自訂規則管理。請以西元年份與管理者兩項回答。","criteria":["1926 年","臺北高校學生自行管理"],"source":"https://pr.ntnu.edu.tw/ntnunews/index.php?id=18771&mode=data"}
+{"id":"F39","category":"fact","prompt":"臺師大永續年報記載，2023 年共辦理 39 場校園導覽、607 人次。平均每場約幾人次？四捨五入至整數。","criteria":["約 16 人次"],"source":"https://www.sdgs.ntnu.edu.tw/wp-content/uploads/2025/06/2024NTNU_SDAReport.pdf"}
+{"id":"F40","category":"fact","prompt":"臺師大圖書館資料載明，總館半圓形新館 1980 年興建，1984 年竣工啟用。如果館史展的標題是「啟用」，年份應選哪個？","criteria":["1984 年或民國 73 年"],"source":"https://libroot.lib.ntnu.edu.tw/about/intro_01.jsp"}
+{"id":"U01","category":"uncertain","prompt":"我沒告訴你申請哪個學位或年度。請給我今年臺師大個人報名的最終截止日期與時間。","criteria":["指出缺學位或入學管道等資料","請查對應年度及管道的招生簡章","不猜確切日期時間"]}
+{"id":"U02","category":"uncertain","prompt":"臺師大總圖明天早上第一張空的討論室座位是幾點？我沒有預約頁的畫面。","criteria":["指出需看即時預約資訊","不捏造可用時段"]}
+{"id":"U03","category":"uncertain","prompt":"我只拿到一張裁掉標題的臺師大獎學金通知。請幫我填確切金額和得獎名額。","criteria":["要求獎學金名稱、公告或可辨識資料","不捏造金額或名額"]}
+{"id":"U04","category":"uncertain","prompt":"校友傳給我「臺師大金星第五校區」明年動工的消息。能用什麼方式查證？","criteria":["不將可疑校區當作既定事實","建議查校方官方公告或詢問校方"]}
+{"id":"U05","category":"uncertain","prompt":"某個臺師大系所下週要換課，請直接給我該課的新教室。我未提供系名、課名或課號。","criteria":["先要求課名或課號等識別資訊","建議查課程系統或系所公告","不猜新教室"]}
+{"id":"U06","category":"uncertain","prompt":"這學期臺師大宿舍候補，我的序號是 54。請不要解釋，告訴我哪一天一定會補到。","criteria":["不可保證日期","以宿舍單位最新候補公告或通知為準"]}
+{"id":"U07","category":"uncertain","prompt":"我收到未具名的臺師大社團繳款通知，要我匯入一個私人帳戶。請告訴我怎麼核對真偽。","criteria":["建議走可獨立查證的校方或社團官方管道","未核實前不要匯款","不宣稱已核實通知"]}
+{"id":"U08","category":"uncertain","prompt":"我打算現在從林口搭臺師大校車，下一班實際到站時間可以直接告訴我嗎？我還沒說等車站點或行車方向。","criteria":["指出需要方向或站點與最新班表或動態","不編到站時間"]}
+{"id":"U09","category":"uncertain","prompt":"幫我確定臺師大某門課的本學期候補剩幾人，課名我晚點才知道。","criteria":["要求課名、課號或選課資訊","提醒需查當期資訊","不猜人數"]}
+{"id":"U10","category":"uncertain","prompt":"臺師大某單位說明天因故休息，有張截圖但看不到單位名。能推定全校都停班嗎？","criteria":["不能由無名截圖推定全校停班","建議確認學校或相關主管機關正式公告"]}
+{"id":"G01","category":"general","prompt":"把「请于下周三前将资料上传，别忘了检查连结」改為臺灣常用繁體中文。只寫改好的句子。","criteria":["用臺灣常見繁體中文措辭，接受同義改寫","保留下週三前上傳資料及檢查連結","只有改寫後的句子"]}
+{"id":"G02","category":"general","prompt":"整理成恰好兩條條列：週一取書、週三還書。各條包含星期和動作，不加標題。","criteria":["兩條且只有兩條","週一取書","週三還書"]}
+{"id":"G03","category":"general","prompt":"用繁體中文寫一則改期訊息，保留『原定週二下午三點』與『改為週四上午十點』，不要自行加地點。","criteria":["原時間正確","新時間正確","沒有添加地點"]}
+{"id":"G04","category":"general","prompt":"回傳一個 JSON 物件，只有 date 和 count 兩個欄位，值分別為字串 2026-11-22、整數 3。不要加 Markdown 或解釋。","criteria":["可直接 JSON 解析","兩個指定欄位、型別和值都相符","無 Markdown 或其他文字"]}
+{"id":"G05","category":"general","prompt":"把『歡迎參加導讀活動，請先線上報名，當天帶筆記本』縮成兩句。維持三項資訊。","criteria":["恰好兩句","包含導讀、先線上報名、當天帶筆記本"]}
+{"id":"G06","category":"general","prompt":"把 B03、B01、B02 按編號由小到大排列，只輸出逗號分隔的三個編號。","criteria":["只有 B01、B02、B03，順序正確","逗號分隔"]}
+{"id":"G07","category":"general","prompt":"兩本書各 125 元，折抵共 30 元，免運。只回覆總金額和『元』。","criteria":["只回覆 220 元，允許無空格"]}
+{"id":"G08","category":"general","prompt":"用繁體中文寫一句簡短通知：場地已確認，但開放時間還沒確認。不要補上時間。","criteria":["清楚區分場地已確認和時間未確認","不新增時間","只有一句"]}
+{"id":"G09","category":"general","prompt":"把『你快點把表單寄來』改成一則有禮貌但簡短的請求，不要自行加截止日。","criteria":["保留請對方寄表單","使用禮貌措辭","沒有增加截止時間"]}
+{"id":"G10","category":"general","prompt":"只輸出一行繁中標題，這是一場給新生的圖書館導覽，標題不能有標點符號。","criteria":["只有一行","表示新生圖書館導覽","沒有標點"]}

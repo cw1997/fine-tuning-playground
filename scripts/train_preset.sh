@@ -25,9 +25,9 @@ LEARNING_RATE="${LEARNING_RATE:-}"
 
 list_presets() {
     cat <<'EOF'
-Available training presets (QLoRA 4-bit, bfloat16, ChatML, effective batch ≈ 16):
+Training presets (GPU QLoRA requires CUDA or compatible ROCm):
 
-  smoke-4b          Any GPU          Qwen3.5-4B   1-epoch pipeline check
+  smoke-4b          CUDA / ROCm      Qwen3.5-4B   1-epoch pipeline check
   smoke-9b          12 GB+ GPU       Qwen3.5-9B   1-epoch pipeline check
   cpu-smoke         CPU only         Qwen3.5-0.8B Verify install without GPU
   gpu-8gb-4b        6–8 GB           Qwen3.5-4B   Entry-level consumer GPU

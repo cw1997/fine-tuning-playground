@@ -23,12 +23,12 @@ from typing import List, Optional, Tuple
 
 import torch
 
+from device_utils import add_device_argument, parse_4bit, resolve_device
 from model_utils import (
     DEFAULT_MODEL_ID,
     fix_ssl_certificates,
     load_base_model,
     load_tokenizer,
-    resolve_device,
 )
 
 fix_ssl_certificates()
@@ -37,11 +37,6 @@ try:
     sys.stdout.reconfigure(encoding="utf-8")
 except (AttributeError, OSError):
     pass
-
-
-def _str2bool(value: str) -> bool:
-    """Parse a CLI boolean string."""
-    return value.lower() == "true"
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,13 +56,12 @@ def parse_args() -> argparse.Namespace:
                         help="Single token string to look up")
     parser.add_argument("--token_id", type=int, default=None,
                         help="Token id to look up")
-    parser.add_argument("--load_in_4bit", type=_str2bool, default=False,
+    parser.add_argument("--load_in_4bit", type=parse_4bit, default=False,
                         help="Load the model in 4-bit quantization")
     parser.add_argument("--torch_dtype", type=str, default="float32",
                         choices=["bfloat16", "float16", "float32"],
                         help="Computation precision")
-    parser.add_argument("--device", type=str, default=None, choices=["gpu", "cpu"],
-                        help="Compute device (auto-detected by default)")
+    add_device_argument(parser)
     parser.add_argument("--vector_limit", type=int, default=8,
                         help="Number of vector elements to print per token (0 = all)")
     parser.add_argument("--no_model", action="store_true",
@@ -288,7 +282,7 @@ def lookup_token_id(tokenizer, model, args: argparse.Namespace) -> None:
 def main() -> None:
     """Orchestrate tokenizer inspection: parse args, load tokenizer, run lookups."""
     args = parse_args()
-    device_map, _, load_in_4bit, compute_dtype = resolve_device(args)
+    config = resolve_device(args)
 
     print(f"Loading tokenizer from {args.model_id}...")
     tokenizer = load_tokenizer(args.model_id)
@@ -298,7 +292,9 @@ def main() -> None:
     model = None
     if not args.no_model:
         print(f"\nLoading model from {args.model_id}...")
-        model = load_base_model(args.model_id, load_in_4bit, compute_dtype, device_map)
+        model = load_base_model(
+            args.model_id, config.load_in_4bit, config.dtype, config.device_map,
+        )
         embeddings = model.get_input_embeddings()
         if embeddings is None:
             print("  Warning: model exposes no input embeddings; "

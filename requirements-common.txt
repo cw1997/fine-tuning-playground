@@ -1,0 +1,8 @@
+# Shared by all backends. Install the desired PyTorch wheel first.
+torch>=2.4.0,<2.12
+transformers>=5.12.1
+peft>=0.13.0
+trl>=1.6.0
+accelerate>=1.13.0
+datasets>=3.0.0
+packaging>=21.0
