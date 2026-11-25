@@ -1,22 +1,19 @@
 """Shared model loading and device utilities for training and inference."""
 
-import argparse
 import os
-import shutil
-from typing import Optional, Tuple
+from typing import Optional
 
 import certifi
 import torch
 from peft import prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    PreTrainedModel,
+)
 
 DEFAULT_MODEL_ID = "Qwen/Qwen3.5-0.8B"
-
-_DTYPE_MAP = {
-    "bfloat16": torch.bfloat16,
-    "float16": torch.float16,
-    "float32": torch.float32,
-}
 
 
 def fix_ssl_certificates(verbose: bool = False) -> None:
@@ -31,62 +28,6 @@ def fix_ssl_certificates(verbose: bool = False) -> None:
             os.environ[ssl_var] = certifi.where()
             if verbose:
                 print(f"  Note: {ssl_var} pointed to missing file; using certifi bundle.")
-
-
-def resolve_device(
-    args: argparse.Namespace,
-) -> Tuple[dict, bool, bool, torch.dtype]:
-    """Detect compute device and adjust quantization / dtype for the platform.
-
-    Args:
-        args: Parsed CLI arguments with ``device``, ``load_in_4bit``, and
-            ``torch_dtype`` attributes.
-
-    Returns:
-        Tuple of ``(device_map, use_cuda, load_in_4bit, compute_dtype)``.
-    """
-    if args.device == "cpu":
-        device_map = {"": "cpu"}
-        use_cuda = False
-        print("Using device: cpu (--device cpu specified)")
-    elif args.device == "gpu":
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "--device gpu was specified but PyTorch has no CUDA available. "
-                "Install a CUDA-enabled PyTorch build or use --device cpu."
-            )
-        device_map = {"": 0}
-        use_cuda = True
-        print(f"Using device: cuda:0 ({torch.cuda.get_device_name(0)})")
-    else:
-        if torch.cuda.is_available():
-            device_map = {"": 0}
-            use_cuda = True
-            print(f"Using device: cuda:0 ({torch.cuda.get_device_name(0)})")
-        else:
-            device_map = {"": "cpu"}
-            use_cuda = False
-            print("Using device: cpu (CUDA unavailable)")
-            if torch.version.cuda is None or not torch.backends.cuda.is_built():
-                print(
-                    "  Hint: The current PyTorch is a CPU build. "
-                    "Install CUDA-enabled PyTorch for GPU training."
-                )
-            elif shutil.which("nvidia-smi"):
-                print("  Hint: NVIDIA driver detected but PyTorch cannot use CUDA.")
-
-    load_in_4bit = args.load_in_4bit
-    dtype_str = args.torch_dtype
-    if not use_cuda:
-        if load_in_4bit:
-            print("  Note: 4-bit quantization requires GPU; falling back to full precision on CPU.")
-            load_in_4bit = False
-        if dtype_str != "float32":
-            print(f"  Note: Using float32 on CPU instead of {dtype_str}.")
-            dtype_str = "float32"
-
-    compute_dtype = _DTYPE_MAP[dtype_str]
-    return device_map, use_cuda, load_in_4bit, compute_dtype
 
 
 def load_tokenizer(model_id: str):
@@ -131,10 +72,11 @@ def load_base_model(
     model_id: str,
     load_in_4bit: bool,
     compute_dtype: torch.dtype,
-    device_map: dict,
+    device_map: dict[str, str],
     *,
     prepare_kbit: bool = False,
-):
+    gradient_checkpointing: bool = True,
+) -> PreTrainedModel:
     """Load a causal language model, optionally with 4-bit quantization.
 
     Args:
@@ -143,9 +85,15 @@ def load_base_model(
         compute_dtype: Target computation dtype.
         device_map: Device placement mapping.
         prepare_kbit: When True, call ``prepare_model_for_kbit_training`` after load.
+        gradient_checkpointing: Whether PEFT should enable checkpointing during
+            k-bit preparation. Ignored when preparation is disabled.
 
     Returns:
-        Loaded base model.
+        PreTrainedModel: Loaded base model.
+
+    Raises:
+        OSError: If the model files cannot be loaded.
+        ValueError: If the model, device map or quantization config is unsupported.
     """
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -155,5 +103,7 @@ def load_base_model(
         trust_remote_code=True,
     )
     if load_in_4bit and prepare_kbit:
-        model = prepare_model_for_kbit_training(model)
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=gradient_checkpointing,
+        )
     return model

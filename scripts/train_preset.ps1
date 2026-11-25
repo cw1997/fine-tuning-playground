@@ -10,7 +10,15 @@
 
 param(
     [string]$Preset = "",
-    [switch]$List
+    [switch]$List,
+    [string]$PythonExecutable = "python",
+    [ValidateRange(0, 2147483647)][int]$BenchmarkSteps = 0,
+    [ValidateRange(0, 2147483647)][int]$BenchmarkWarmupSteps = 3,
+    [ValidateSet(1, 2, 4, 8, 16)][int]$MicroBatch,
+    [ValidateSet("True", "False")][string]$Checkpointing,
+    [switch]$AssistantOnly,
+    [ValidateSet("nll", "chunked_nll")][string]$LossType,
+    [string]$RunMetrics
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +29,9 @@ if (-not $env:DATASET_PATH) { $env:DATASET_PATH = ".\data\ntnu_dataset.jsonl" }
 
 function Show-Presets {
     @"
-Available training presets (QLoRA 4-bit, bfloat16, ChatML, effective batch ≈ 16):
+Training presets (GPU QLoRA requires CUDA or compatible ROCm):
 
-  smoke-4b          Any GPU          Qwen3.5-4B   1-epoch pipeline check
+  smoke-4b          CUDA / ROCm      Qwen3.5-4B   1-epoch pipeline check
   smoke-9b          12 GB+ GPU       Qwen3.5-9B   1-epoch pipeline check
   cpu-smoke         CPU only         Qwen3.5-0.8B Verify install without GPU
   gpu-8gb-4b        6–8 GB           Qwen3.5-4B   Entry-level consumer GPU
@@ -33,6 +41,16 @@ Available training presets (QLoRA 4-bit, bfloat16, ChatML, effective batch ≈ 1
   gpu-16gb-9b       16 GB            Qwen3.5-9B   Full 7-layer LoRA, r=32
   gpu-24gb-4b       24 GB            Qwen3.5-4B   High-quality 4B, long context
   gpu-24gb-9b       24 GB            Qwen3.5-9B   Recommended desktop 9B
+
+Native Windows NTNU comparison (12 GB, BF16 compute):
+  ntnu-win-baseline    Qwen3.5-4B NF4, 2 x 8, 3 epochs
+  ntnu-win-qwen35-4b   Qwen3.5-4B NF4, 4 x 4, 2 epochs
+  ntnu-win-qwen3-4b    Qwen3-4B-Instruct-2507 NF4, 4 x 4, 2 epochs
+  ntnu-win-qwen35-2b   Qwen3.5-2B BF16, 8 x 2, 2 epochs
+
+Windows comparison options:
+  -PythonExecutable, -BenchmarkSteps, -BenchmarkWarmupSteps, -MicroBatch, -Checkpointing,
+  -AssistantOnly, -LossType, -RunMetrics
 
 Environment overrides:
   `$env:DATASET_PATH, `$env:OUTPUT_DIR, `$env:NUM_EPOCHS, `$env:LEARNING_RATE
@@ -44,7 +62,7 @@ For 30K+ examples use NUM_EPOCHS=1–2 and LEARNING_RATE=1.5e-4 instead.
 
 function Invoke-Train {
     param([string[]]$Args)
-    & python src/train.py @Args
+    & $PythonExecutable -u src/train.py @Args
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
@@ -74,6 +92,50 @@ $Common = @(
     "--test_split", "0.05",
     "--logging_steps", "10"
 )
+
+if ($Preset -like "ntnu-win-*") {
+    $Settings = switch ($Preset) {
+        "ntnu-win-baseline"  { @("Qwen/Qwen3.5-4B", "True", 2, 3) }
+        "ntnu-win-qwen35-4b" { @("Qwen/Qwen3.5-4B", "True", 4, 2) }
+        "ntnu-win-qwen3-4b"  { @("Qwen/Qwen3-4B-Instruct-2507", "True", 4, 2) }
+        "ntnu-win-qwen35-2b" { @("Qwen/Qwen3.5-2B", "False", 8, 2) }
+        default { throw "Unknown Windows NTNU preset: $Preset" }
+    }
+    $IsBaseline = $Preset -eq "ntnu-win-baseline"
+    $Batch = if ($MicroBatch) { $MicroBatch } else { $Settings[2] }
+    $Accum = 16 / $Batch
+    $Epochs = if ($env:NUM_EPOCHS) { $env:NUM_EPOCHS } else { $Settings[3] }
+    $Lr = if ($env:LEARNING_RATE) { $env:LEARNING_RATE } else { "2e-4" }
+    $Length = if ($IsBaseline) { "2048" } else { "512" }
+    if (-not $Checkpointing) { $Checkpointing = $IsBaseline.ToString() }
+    if (-not $LossType) { $LossType = "nll" }
+
+    $RunName = if ($BenchmarkSteps) { "$Preset-short" } else { $Preset }
+    $Out = if ($env:OUTPUT_DIR) { $env:OUTPUT_DIR } else {
+        Join-Path ".\models\ntnu\windows-comparison" $RunName
+    }
+    if (-not $RunMetrics) { $RunMetrics = Join-Path $Out "metrics.json" }
+    $TrainArguments = @(
+        "--model_id", $Settings[0], "--load_in_4bit", $Settings[1],
+        "--dataset_path", $env:DATASET_PATH, "--device", "gpu",
+        "--num_epochs", $Epochs, "--learning_rate", $Lr, "--max_seq_length", $Length,
+        "--per_device_batch_size", $Batch, "--gradient_accum_steps", $Accum,
+        "--gradient_checkpointing", $Checkpointing, "--output_dir", $Out,
+        "--loss_type", $LossType, "--run_metrics", $RunMetrics
+    )
+    if (-not $IsBaseline) {
+        $TrainArguments += @("--group_by_length", "--eval_each_epoch", "--eval_batch_size", $Batch)
+    }
+    if ($AssistantOnly) { $TrainArguments += "--assistant_only_loss" }
+    if ($BenchmarkSteps) {
+        $TrainArguments += @(
+            "--benchmark_steps", $BenchmarkSteps,
+            "--benchmark_warmup_steps", $BenchmarkWarmupSteps
+        )
+    }
+    & $PythonExecutable -u src/train.py @TrainArguments
+    exit $LASTEXITCODE
+}
 
 switch ($Preset) {
     "smoke-4b" {

@@ -19,6 +19,7 @@
   - [資料集規模指引](#資料集規模指引)
   - [具名預設組合](#具名預設組合)
   - [預設腳本](#預設腳本)
+  - [原生 Windows 臺師大基準測試](#原生-windows-臺師大基準測試)
   - [各預設的手動命令](#各預設的手動命令)
 - [資料格式](#資料格式)
   - [ChatML 格式](#chatml-格式)
@@ -59,12 +60,12 @@
 
 ## 功能特色
 
-- **QLoRA / LoRA 雙模式支援** — 使用 4-bit 量化可在 6 GB GPU 上訓練，關閉量化則可使用完整 FP16 LoRA。
+- **QLoRA / LoRA 雙模式支援** — NVIDIA CUDA 與相容的 AMD ROCm 環境可使用 4-bit NF4，也可用未量化權重訓練。
 - **多種資料格式** — 支援 ChatML（原生格式）、Alpaca（instruction/input/output）以及純文字格式。
 - **Hugging Face Hub 整合** — 直接從 Hub 載入資料集，並將訓練完成的適配器推送回 Hub。
 - **思考模式** — 可選擇在訓練與推論時啟用 Qwen3 的 `<think>` 推理標籤。
 - **命令列優先設計** — 所有超參數皆可透過命令列旗標設定，無需撰寫 YAML 設定檔。
-- **CPU 備援** — 若無 CUDA，訓練與推論會自動改以 CPU 全精度執行（速度極慢，僅建議用於冒煙測試）。
+- **多種運算後端** — 支援 NVIDIA CUDA、AMD ROCm、Apple Metal（MPS）和 Intel XPU 上的訓練與推論，並提供 float32 CPU 備援。
 - **單檔訓練腳本** — `src/train.py` 由上而下執行完整 SFT 流程，適合講解微調各步驟。
 - **模型檢查** — `src/inspect_model.py` 輸出模型內部的標準化報告（參數量、詞表大小、嵌入維度、層級結構），無需準備資料集。
 - **分詞器檢查** — `src/inspect_tokenizer.py` 顯示句子被切分為哪些 token、每個 token 的詞表編號，以及每個 token 的嵌入向量（或單一 token 的 index 位置與向量）。
@@ -85,13 +86,17 @@
 | LoRA 4B（16-bit，batch 1） | ~12 GB | RTX 3080 / 4070 Ti / 4080、A10 |
 | CPU（無量化，float32） | — | 任何 CPU（極慢，僅冒煙測試） |
 
-強烈建議使用 GPU 訓練。在無 CUDA 的機器上，流程會自動關閉 4-bit 量化並以 CPU `float32` 執行。可用 `--device gpu` 或 `--device cpu` 覆寫自動偵測。各 GPU 等級的現成命令請見[建議訓練預設組合](#建議訓練預設組合)。
+上方的 VRAM 數據以 NVIDIA 為例。Apple Silicon 的模型權重、啟用值和作業系統共用統一記憶體。驗證新 GPU 時可先使用 Qwen3.5-0.8B。
+
+訓練、推論、兩個檢查工具與臺師大評測都接受 `--device auto|gpu|cuda|rocm|mps|xpu|cpu`。自動偵測依 CUDA、ROCm、MPS、XPU、CPU 的順序選擇。`gpu` 採用相同順序並要求有可用 GPU。指定後端時，該後端必須可用。
+
+訓練與推論在 NVIDIA CUDA 上預設使用 NF4。ROCm 預設使用未量化權重，指定 `--load_in_4bit True` 後會先驗證已安裝的 GPU 核心。MPS 和 XPU 使用未量化權重。CPU 使用未量化的 `float32` 權重。兩個檢查工具在所有後端預設都使用未量化權重。
 
 ---
 
 ## 安裝方式
 
-建議使用 **Python 3.11 或 3.12** 以獲得最佳 CUDA wheel 相容性。較新的 Python 版本在 PyPI 上可能只有 CPU 版 PyTorch。
+建議使用 **Python 3.11 或 3.12** 搭配相容的 PyTorch wheel。ROCm 請使用 AMD 為該版本指定的 Python 版本。每種 PyTorch 後端請使用獨立的環境。
 
 ### 方式一 — Miniconda（建議）
 
@@ -102,7 +107,8 @@ cd fine-tuning-playground
 conda create -n finetune python=3.11 -y
 conda activate finetune
 
-pip install -r requirements.txt
+# 安裝平台預設後端，或依下方指令選擇後端
+python scripts/install_deps.py
 ```
 
 ### 方式二 — venv
@@ -115,45 +121,60 @@ python -m venv venv
 source venv/bin/activate  # Linux / macOS
 # venv\Scripts\activate   # Windows
 
-pip install -r requirements.txt
+# 安裝平台預設後端，或依下方指令選擇後端
+python scripts/install_deps.py
 ```
 
-### 輔助腳本
+### 安裝及驗證後端
 
-```bash
-bash scripts/install_deps.sh                 # Linux / macOS / Git Bash
-powershell -File scripts/install_deps.ps1    # Windows PowerShell
+安裝腳本會執行小型張量運算，並顯示啟用的後端與 PyTorch 版本。Apple Silicon macOS 預設使用 MPS，Intel macOS 預設使用 CPU，Windows 和 Linux 預設使用 CUDA。Bash 腳本接受與 Python 安裝腳本相同的旗標。Windows PowerShell 腳本使用 `-Backend` 和 `-Rocm4Bit`。
 
-# 列出訓練預設（VRAM / 模型 / 資料集規模）
-bash scripts/train_preset.sh --list          # Linux / macOS / Git Bash
-powershell -File scripts/train_preset.ps1 -List
-```
+| 後端 | 在目前環境安裝 | 驗證模型工具 |
+|---|---|---|
+| NVIDIA CUDA（Linux / Windows） | `python scripts/install_deps.py --backend cuda` | `python src/inspect_model.py --device cuda --no_load` |
+| AMD ROCm（Linux / WSL2 / Windows） | 先安裝 AMD PyTorch wheel，再執行 `python scripts/install_deps.py --backend rocm` | `python src/inspect_model.py --device rocm --no_load` |
+| Apple M 系列（macOS） | 使用原生 arm64 Python 執行 `bash scripts/install_deps.sh --backend mps` | `python src/inspect_model.py --device mps --no_load` |
+| Intel XPU（Linux / Windows） | 安裝 GPU 驅動程式後執行 `python scripts/install_deps.py --backend xpu` | `python src/inspect_model.py --device xpu --no_load` |
+| CPU | `python scripts/install_deps.py --backend cpu` | `python src/inspect_model.py --device cpu --no_load` |
 
-驗證 PyTorch 是否能看到 GPU：
+使用 ROCm 時，請先確認驅動程式、GPU 與 PyTorch wheel 相容。安裝腳本會沿用環境中的 AMD wheel。使用 Intel GPU 前請先確認 GPU 和驅動程式的需求。 [AMD Linux 安裝](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html) · [AMD WSL2 相容性](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html) · [AMD Windows 安裝](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installryz/windows/install-pytorch.html) · [Intel XPU 安裝](https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html)
 
-```bash
-python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
-```
+若要使用 AMD NF4，請執行 `python scripts/install_deps.py --backend rocm --rocm-4bit` 或 `powershell -File scripts/install_deps.ps1 -Backend rocm -Rocm4Bit`。請確認 bitsandbytes 套件與 GPU 和 ROCm 版本相容。 [bitsandbytes 安裝指南](https://huggingface.co/docs/bitsandbytes/installation#amd-rocm)
 
-`requirements.txt` 包含 CUDA 版 PyTorch（cu128）與全部專案依賴。若僅需 CPU 版（4B 模型會非常慢），請先從 PyPI 安裝 PyTorch，再安裝其餘套件（不含 `bitsandbytes`）。
+NVIDIA CUDA 仍可直接執行 `python -m pip install -r requirements.txt` 安裝。使用其他後端時，安裝腳本選定或確認 PyTorch 後會使用 `requirements-common.txt`。
 
 核心套件：
 
 | 套件 | 最低版本 | 用途 |
 |---|---|---|
 | `torch` | >= 2.4.0, < 2.12 | 深度學習框架（`requirements.txt` 預設 CUDA cu128） |
-| `transformers` | >= 4.47.0 | 模型載入與分詞（Qwen3 支援） |
+| `transformers` | >= 5.12.1 | Qwen 模型載入、分詞與訓練 |
 | `peft` | >= 0.13.0 | LoRA / QLoRA 適配器設定 |
-| `trl` | >= 0.9.0 | 監督式微調的 SFTTrainer |
-| `accelerate` | >= 1.0.0 | 分散式訓練支援 |
-| `bitsandbytes` | >= 0.43.0 | 4-bit 量化（QLoRA） |
+| `trl` | >= 1.6.0 | 支援助理標籤和分塊 loss 的 SFTTrainer |
+| `accelerate` | >= 1.13.0 | Trainer 裝置配置和混合精度 |
+| `bitsandbytes` | CUDA >= 0.46.1、ROCm >= 0.50.0 | 選用的 4-bit 量化（QLoRA） |
 | `datasets` | >= 3.0.0 | 資料集載入與處理 |
+| `packaging` | >= 21.0 | PyTorch 版本檢查 |
 
 ---
 
 ## 快速開始
 
-依下列步驟設定環境並開始訓練：
+### 跨平台冒煙測試
+
+安裝後端後，使用 Qwen3.5-0.8B 訓練一步並重新載入適配器。可將 `gpu` 改為 `mps`、`rocm`、`xpu`、`cuda` 或 `cpu` 來指定裝置。
+
+```bash
+python -c "from pathlib import Path; p=Path('models/backend-smoke'); p.mkdir(parents=True, exist_ok=True); (p/'train.jsonl').write_bytes(Path('data/ntnu_dataset.jsonl').read_bytes().splitlines(keepends=True)[0])"
+python src/train.py --device gpu --dataset_path ./models/backend-smoke/train.jsonl --num_epochs 1 --test_split 0 --max_seq_length 64 --per_device_batch_size 1 --gradient_accum_steps 1 --output_dir ./models/backend-smoke/adapter
+python src/inference.py --device gpu --mode finetuned --adapter_path ./models/backend-smoke/adapter --prompt "分詞器的用途是什麼？" --max_new_tokens 32 --no_interactive
+```
+
+使用相容的 AMD GPU 時，可在訓練和推論指令中都加上 `--device rocm --load_in_4bit True` 來驗證 NF4。
+
+### NVIDIA 4B 預設
+
+設定 CUDA 環境後，使用完整的內附資料集訓練：
 
 ```bash
 # 1. 複製並進入倉庫
@@ -164,24 +185,21 @@ cd fine-tuning-playground
 conda create -n finetune python=3.11 -y
 conda activate finetune
 
-# 3. 安裝依賴套件
-pip install -r requirements.txt
+# 3. 安裝並驗證 CUDA
+python scripts/install_deps.py --backend cuda
 
-# 4. 確認 GPU 可用
-python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
-
-# 5. 使用內附的臺師大資料集（約 1.2K 筆 ChatML 範例）進行訓練
+# 4. 使用內附的臺師大資料集（約 1.2K 筆 ChatML 範例）進行訓練
 bash scripts/train_preset.sh gpu-12gb-4b
 # 或手動執行：
 # python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/gpu-12gb-4b
 
-# 6. 以基底模型推論（微調前）— 儲存輸出以便對比
+# 5. 以基底模型推論（微調前）
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# 7. 以微調後模型推論 — 與步驟 6 對比
+# 6. 以微調後模型推論
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# 8. 以微調後模型進行互動式對話（輸入 quit 退出）
+# 7. 以微調後模型進行互動式對話（輸入 quit 退出）
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b
 ```
 
@@ -193,10 +211,13 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_pa
 
 ```
 fine-tuning-playground/
-├── requirements.txt          # Python 套件依賴列表
+├── requirements.txt          # NVIDIA cu128 安裝入口
+├── requirements-common.txt   # 共用 Python 套件依賴
 ├── src/                      # 原始碼腳本
 │   ├── train.py              # 完整 SFT 流程（單檔、由上而下）
 │   ├── inference.py          # 互動式推論 + 微調前/後/對比模式
+│   ├── evaluate_ntnu.py      # 貪婪解碼與臺師大品質盲評
+│   ├── device_utils.py       # 後端選擇、精度與 ROCm NF4 檢查
 │   ├── inspect_model.py      # 模型內部檢查（參數量、詞表、維度、設定）
 │   └── inspect_tokenizer.py  # 分詞器檢查（token 片段、編號、嵌入向量）
 ├── data/                     # 訓練資料集與產生器
@@ -207,8 +228,12 @@ fine-tuning-playground/
 │   ├── ntnu/                 # 臺師大分類 JSONL 檔
 │   ├── taiwan/               # 臺灣分類 JSONL 檔
 │   └── _archive/             # 舊版紀錄產生模組
-├── models/                   # 微調後的 LoRA 適配器（已加入 .gitignore）
-├── scripts/                  # install_deps.* / train_preset.*
+├── evaluation/ntnu_qa.jsonl  # 獨立的 60 題測試題與評分準則
+├── models/                   # 微調後的適配器與基準測試紀錄（Git 忽略）
+├── scripts/                  # 安裝腳本與訓練預設
+│   └── install_deps.py       # 選擇後端、安裝依賴與驗證裝置
+├── tests/
+│   └── test_device_utils.py   # 後端選擇和量化測試
 ├── README.md                 # 英文文件
 └── README.zh-Hant.md         # 本文件（繁體中文）
 ```
@@ -227,6 +252,12 @@ fine-tuning-playground/
 
 **`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — 針對常見 GPU 等級與模型規模的具名訓練預設。可用 `DATASET_PATH=./data/my.jsonl` 覆寫資料集路徑。
 
+**`src/device_utils.py`** 為各模型指令選擇後端、模型 dtype 和 NF4 設定。**`scripts/install_deps.py`** 透過 Bash 和 PowerShell 腳本安裝並驗證 PyTorch。**`requirements-common.txt`** 包含安裝腳本和 CUDA 依賴檔共用的套件。
+
+**`tests/test_device_utils.py`** 使用模擬硬體測試後端選擇。以 `python -m unittest discover -s tests -v` 執行。
+
+**`src/evaluate_ntnu.py`** 以固定設定生成各適配器的回答，並將回答洗牌以供盲評。**`evaluation/ntnu_qa.jsonl`** 內含固定測試題、通過準則及事實題的官方來源。請將這些題目保留在訓練資料之外。
+
 ---
 
 ## 設定參數
@@ -236,7 +267,7 @@ fine-tuning-playground/
 | 類別 | 參數 | 預設值 | 說明 |
 |---|---|---|---|
 | **模型** | `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face 模型識別碼（GPU 建議使用 `Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B`） |
-| | `load_in_4bit` | `True` | 啟用 4-bit NF4 量化（CPU 上會自動關閉） |
+| | `load_in_4bit` | CUDA 預設開啟 | NF4 QLoRA。在相容的 ROCm 環境設為 `True`，使用未量化 LoRA 時設為 `False` |
 | | `torch_dtype` | `bfloat16` | 計算精度（CPU 上會改為 `float32`） |
 | **LoRA** | `lora_r` | `16` | LoRA 秩（rank） |
 | | `lora_alpha` | `32` | LoRA 縮放因子（通常設為 2 × r） |
@@ -245,17 +276,27 @@ fine-tuning-playground/
 | **資料** | `dataset_path` | （必填） | 本機 JSON/JSONL 檔案、JSONL 檔目錄（遞迴掃描），或 HF 資料集名稱（本機路徑須以 `./`、`.` 或 `/` 開頭） |
 | | `dataset_format` | `chat` | 輸入格式：`chat`、`alpaca` 或 `text` |
 | | `test_split` | `0.05` | 保留為評估集的比例（0 = 不評估） |
+| | `seed` | `42` | 資料切分、適配器初始化和取樣的亂數種子 |
 | | `max_seq_length` | `4096` | 每個範例的最大 token 數 |
 | | `use_thinking` | `False` | 啟用思考模式 |
 | **訓練** | `learning_rate`（`--lr`） | `2e-4` | 峰值學習率 |
 | | `num_epochs`（`--epochs`） | `3` | 訓練週期數 |
 | | `per_device_batch_size`（`--batch_size`） | `2` | 每張 GPU 的批次大小 |
 | | `gradient_accum_steps` | `8` | 梯度累積步數 |
+| | `gradient_checkpointing` | `True` | 重算 activation，降低 GPU 記憶體峰值 |
+| | `group_by_length` | 關閉 | 將長度相近的訓練範例分在同一批次，減少 padding |
+| | `assistant_only_loss` | 關閉 | 在相容的聊天模板中只監督助理回答及結束 token。若目標被截斷便停止 |
+| | `loss_type` | TRL 預設 | 可選 `nll` 或 `chunked_nll`，分塊可降低詞表投影的記憶體需求 |
+| | `eval_each_epoch` | 關閉 | 每輪評估並儲存，最後匯出驗證 loss 最低的檢查點 |
+| | `eval_batch_size` | `8` | 每張 GPU 的評估批次大小 |
 | | `warmup_ratio` | `0.03` | 線性 warmup 比例 |
 | | `logging_steps` | `10` | 每隔 N 步記錄一次指標 |
 | | `save_steps` | `200` | 每隔 N 步儲存一次檢查點 |
 | | `output_dir` | `./models/qwen3-4b-finetuned` | 輸出目錄 |
-| **硬體** | `device` | `None`（自動） | 運算裝置：`gpu`、`cpu` 或自動偵測 |
+| **基準測試** | `benchmark_steps` | `0` | 要計時的 optimizer 步數。大於零時跳過驗證和匯出適配器 |
+| | `benchmark_warmup_steps` | `3` | 計時前排除的暖機步數 |
+| | `run_metrics` | — | 選用的 JSON 紀錄，包含耗時、實際後端、dtype、NF4 狀態、序列長度、模型 revision 和套件版本 |
+| **硬體** | `device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
 | **Hub** | `push_to_hub` | `False` | 將適配器推送至 HF Hub |
 | | `hub_model_id` | `""` | Hub 上的目標儲存庫名稱 |
 
@@ -266,9 +307,9 @@ fine-tuning-playground/
 | **模型** | `model_id` | `Qwen/Qwen3.5-0.8B` | 基底模型（須與微調時使用的模型一致） |
 | | `mode` | `base` | `base`、`finetuned` 或 `compare` |
 | | `adapter_path` | — | LoRA 適配器目錄（`finetuned` / `compare` 模式必填） |
-| | `load_in_4bit` | `True` | 推論時使用 4-bit 量化 |
+| | `load_in_4bit` | CUDA 預設開啟 | NF4 推論。在相容的 ROCm 環境設為 `True`，使用未量化權重時設為 `False` |
 | | `torch_dtype` | `bfloat16` | 計算精度 |
-| | `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
+| | `device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
 | **生成** | `prompt` | — | 單次測試提示（省略則跳過批次測試） |
 | | `max_new_tokens` | `2048` | 最大生成 token 數 |
 | | `temperature` | `0.7` | 取樣溫度 |
@@ -283,7 +324,7 @@ fine-tuning-playground/
 | `model_id` | `Qwen/Qwen3.5-0.8B` | 要檢查的 Hugging Face 模型識別碼 |
 | `load_in_4bit` | `False` | 以 4-bit 量化載入權重（查看量化後的參數量） |
 | `torch_dtype` | `float32` | 載入權重時使用的計算精度 |
-| `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
+| `device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
 | `no_load` | `False` | 僅輸出設定與分詞器報告，不載入權重 |
 
 ### 分詞器檢查（`src/inspect_tokenizer.py`）
@@ -297,7 +338,7 @@ fine-tuning-playground/
 | `vector_limit` | `8` | 每個 token 輸出幾個向量元素（`0` 輸出完整向量） |
 | `load_in_4bit` | `False` | 以 4-bit 量化載入模型 |
 | `torch_dtype` | `float32` | 載入模型時使用的計算精度 |
-| `device` | `None`（自動） | `gpu`、`cpu` 或自動偵測 |
+| `device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
 | `no_model` | `False` | 僅輸出 token 化與編號，不載入模型（無向量） |
 
 `--sentence`、`--token`、`--token_id` 三者至少需提供其一。
@@ -306,9 +347,19 @@ fine-tuning-playground/
 
 ---
 
+### 臺師大評測（`src/evaluate_ntnu.py generate`）
+
+| 參數 | 預設 | 說明 |
+|---|---|---|
+| `device` | `gpu` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
+| `load_in_4bit` | CUDA 預設開啟 | 用 `True` 或 `False` 指定 NF4。ROCm 需設為 `True` 才啟用 |
+| `bf16_weights` | 關閉 | 在支援時使用未量化的 BF16 權重。此旗標請單獨使用 |
+
+評測輸出記錄實際後端、dtype 和量化方式供續跑比對。舊檔可使用原本的 CUDA/BF16 設定續跑。切換硬體後端或精度時請指定新的輸出路徑。
+
 ## 建議訓練預設組合
 
-以下預設均假設使用 **QLoRA（4-bit）**、**`bfloat16`**、**ChatML 格式**（`--dataset_format chat`），且**有效批次大小為 16**（`per_device_batch_size × gradient_accum_steps`）。所有預設皆啟用 5% 評估分割，並依 eval loss 儲存最佳檢查點。
+GPU QLoRA 預設適用於 CUDA 或已安裝 bitsandbytes 的相容 ROCm 環境，使用 **`bfloat16`**、**ChatML 格式**（`--dataset_format chat`）與 **16 的有效批次大小**（`per_device_batch_size × gradient_accum_steps`）。MPS 和 XPU 請使用[快速開始](#快速開始)中的未量化指令。預設會啟用 5% 評估分割，並依 eval loss 儲存最佳檢查點。
 
 內附的臺師大資料集（`./data/ntnu_dataset.jsonl`）約含 **1,252** 筆範例 — 預設使用 **3 epoch**、**lr = 2e-4**。若使用較大的自訂資料集，請搭配下方[資料集規模指引](#資料集規模指引)調整。
 
@@ -317,7 +368,7 @@ fine-tuning-playground/
 | 平台 | 安裝 | 列出預設 | 執行訓練 | 備註 |
 |---|---|---|---|---|
 | **Linux** | `bash scripts/install_deps.sh` | `bash scripts/train_preset.sh --list` | `bash scripts/train_preset.sh gpu-12gb-4b` | 建議使用原生 CUDA |
-| **macOS** | `bash scripts/install_deps.sh` | 同 Linux | `bash scripts/train_preset.sh cpu-smoke` | 無 NVIDIA CUDA；使用 CPU 冒煙或外接 GPU |
+| **Apple Silicon macOS** | `bash scripts/install_deps.sh --backend mps` | 同 Linux | [跨平台冒煙測試](#跨平台冒煙測試) | 使用 `--device mps` |
 | **Windows（PowerShell）** | `powershell -File scripts/install_deps.ps1` | `powershell -File scripts/train_preset.ps1 -List` | `powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b` | OOM 時可設 `$env:PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` |
 | **Windows（Git Bash）** | `bash scripts/install_deps.sh` | 同 Linux | 同 Linux | 命令與 Linux 相同 |
 
@@ -390,7 +441,7 @@ NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
 
 | 預設名稱 | 目標硬體 | 模型 | 用途 |
 |---|---|---|---|
-| `smoke-4b` | 任何 GPU | Qwen3.5-4B | 1 epoch 流程驗證 |
+| `smoke-4b` | CUDA 或相容的 ROCm | Qwen3.5-4B | 1 epoch 流程驗證 |
 | `smoke-9b` | 12 GB+ GPU | Qwen3.5-9B | 1 epoch 流程驗證（12 GB 友善） |
 | `cpu-smoke` | 僅 CPU | Qwen3.5-0.8B | 無 GPU 時驗證安裝 |
 | `gpu-8gb-4b` | 6–8 GB | Qwen3.5-4B | 入門級消費級 GPU |
@@ -444,6 +495,66 @@ powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-9b
 $env:DATASET_PATH = ".\data\my_dataset.jsonl"
 powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
 ```
+
+### 原生 Windows 臺師大基準測試
+
+請使用支援 CUDA 的 Python 環境。RTX 5070 Ti Laptop 驗證環境為 Python 3.11、
+PyTorch 2.11.0+cu128、Transformers 5.12.1、TRL 1.6.0、PEFT 0.19.1 和
+bitsandbytes 0.49.2。開始前先確認使用中的 Python 能辨識 CUDA。
+
+這次檢查所用的本機模型 revision：
+
+- `Qwen/Qwen3.5-4B` 為 `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`
+- `Qwen/Qwen3-4B-Instruct-2507` 為 `cdbee75f17c01a7cc42f958dc650907174af0554`
+- `Qwen/Qwen3.5-2B` 為 `15852e8c16360a2fea060d615a32b45270f8a8fc`
+
+```powershell
+conda activate ai
+python -c "import torch; print(torch.__version__, torch.cuda.get_device_name())"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -List
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-baseline -BenchmarkSteps 10
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-qwen3-4b -BenchmarkSteps 10
+```
+
+其他候選為 `ntnu-win-qwen35-4b`（NF4）及 `ntnu-win-qwen35-2b`（BF16 權重）。
+各組皆使用有效 batch 16 和內附資料的 5% 驗證切分。
+每次重複測試以 `-RunMetrics` 指定不同的 JSON 路徑。候選若顯存不足，先用
+`-Checkpointing True` 重試，再視需要將 `-MicroBatch` 減半。腳本會自動調整梯度累積步數。
+若只想做單步驗證，傳入 `-BenchmarkSteps 1 -BenchmarkWarmupSteps 0`。
+`-AssistantOnly` 啟用助理標籤，`-LossType chunked_nll` 啟用分塊 loss。
+省略 `-BenchmarkSteps` 即完整訓練。基線預設三輪，候選預設兩輪。
+要比較三輪，將 `NUM_EPOCHS` 設成 `3`，並將 `OUTPUT_DIR` 設成新路徑。
+`-PythonExecutable` 可指定 Python 直譯器。
+
+用候選的實際基底模型和權重精度生成答案。2B BF16 候選要加 `--bf16_weights`。
+互動使用時，在 `src/inference.py --mode finetuned` 指定相同的模型和適配器，
+BF16 候選要加 `--load_in_4bit False`。以下以 Qwen3-4B 候選為例：
+
+```powershell
+$results = "models/ntnu/windows-comparison"
+$model = "Qwen/Qwen3-4B-Instruct-2507"
+$adapter = "$results/ntnu-win-qwen3-4b"
+python src/evaluate_ntnu.py generate --model_id $model --adapter_path $adapter --output "$results/candidate.json"
+python src/inference.py --mode finetuned --device gpu --model_id $model --adapter_path $adapter
+```
+
+對既有 4B 和重跑的 4B 基線各生成一次回答，並將三份回答檔交給 `blind`。
+40 題事實題包含 24 題直接問答及 16 題附來源內容的問答。各模型使用相同的
+`generate --batch_size`（預設 4）和 `--max_new_tokens`（預設 192）。
+生成預設使用 `--device gpu`。可在子命令前用全域 `--cases` 指定相容的 JSONL。
+對照每條準則評分。若捏造有實質影響的事實，例如資格、截止日、金額、地址或操作指示，
+將 `major` 標為真。答案符合所有準則，且事實題使用繁體中文，才將 `pass` 標為真。
+填寫兩項布林值並記下失分原因，再將評分檔與獨立的對照檔交給 `score`。
+
+```powershell
+python src/evaluate_ntnu.py blind "existing=$results/existing.json" "baseline=$results/baseline.json" "candidate=$results/candidate.json" --output "$results/review.json" --key "$results/key.json"
+python src/evaluate_ntnu.py score --review "$results/review.json" --key "$results/key.json" --baselines existing baseline --output "$results/quality.json"
+```
+
+候選需通過品質評分，且在模型已快取時將完整執行耗時減少至少 25%，才採用。
+使用指標檔內的 `elapsed_seconds` 比較，首次下載耗時另計。為使 GPU 耗時可比較，
+一次只執行一個訓練或推論工作。在 Windows 上若單步卡住或 CUDA 回報未知錯誤，
+可在工作管理員查看專用與共享 GPU 記憶體。
 
 ### 各預設的手動命令
 
@@ -810,7 +921,7 @@ python src/train.py \
 
 ### 完整精度 LoRA vs QLoRA
 
-QLoRA（4-bit）為預設模式，所需記憶體最少。若要在不使用量化的情況下以 FP16 LoRA 訓練：
+QLoRA（4-bit）是 NVIDIA 的預設模式。若要使用未量化的 LoRA，請指定 `--load_in_4bit False`：
 
 ```bash
 python src/train.py \
@@ -867,13 +978,13 @@ my-finetuned-model/
 
 5. **序列長度**：範例會透過 `SFTConfig.max_length` 截斷或填充至 `max_seq_length`。目前的訓練設定未啟用序列打包（packing）。
 
-6. **混合精度**：在 GPU 上 `bfloat16` 的訓練穩定性優於 `float16`。若 GPU 不支援 bf16，請使用 `--torch_dtype float16`。在 CPU 上會自動改為 `float32`。
+6. **混合精度** — 啟動紀錄會顯示權重與 Trainer 使用的實際 dtype。GPU 無法使用 BF16 時，會使用可用的 FP16。CPU 使用 FP32。MPS 混合精度訓練使用 FP16 時需 PyTorch 2.5 或更新版本，使用 BF16 時需 2.6 或更新版本。
 
 7. **資料品質重於數量**：對於指令微調而言，500–1000 筆高品質的乾淨資料集通常勝過 10,000 筆雜訊資料。
 
 8. **推論時須對應 `model_id`**：`src/inference.py` 使用的基底模型（`--model_id`）必須與微調時的模型一致。
 
-9. **互動式與單次推論**：手動探索時使用預設的互動迴圈；需要單次批次執行時（例如快速開始的步驟 6–7 或 shell 腳本）請加上 `--no_interactive`。
+9. **互動式與單次推論**：手動探索時使用預設的互動迴圈。需要單次批次執行時，請加上 `--no_interactive`。
 
 ---
 
@@ -881,11 +992,12 @@ my-finetuned-model/
 
 | 問題 | 可能原因 | 解決方案 |
 |---|---|---|
-| 有 GPU 但訓練仍走 CPU | 安裝了 CPU 版 PyTorch（`torch x.x.x+cpu`） | 使用 Python 3.11–3.12，再執行 `pip install -r requirements.txt` |
-| `RuntimeError: GPU was requested via --device gpu` | PyTorch 無法使用 CUDA | 安裝 CUDA 版 PyTorch，或不要指定 `--device gpu` |
+| 有 GPU 但訓練仍走 CPU | 目前的 PyTorch wheel 或驅動無法使用 GPU | 在新環境依後端的[安裝指引](#安裝及驗證後端)設定，再明確指定 `--device` |
+| `--device gpu` 或指定的 GPU 後端不可用 | PyTorch 無法使用所選加速器 | 確認該後端的 wheel 和驅動。要用 CPU 執行可指定 `--device cpu` |
 | `OutOfMemoryError` | 批次大小超出 GPU 記憶體 | 降低 `--per_device_batch_size` 或 `--max_seq_length` |
-| `KeyError: 'qwen3'` | Transformers 版本過舊 | 升級至 `transformers>=4.47.0` |
-| bitsandbytes 匯入錯誤 | 缺少 CUDA 或版本不相容 | 確認 bitsandbytes 與 CUDA 版本匹配：`pip install bitsandbytes --force-reinstall` |
+| `KeyError: 'qwen3'` | Transformers 版本過舊 | 升級至 `transformers>=5.12.1` |
+| CUDA 或 ROCm 的 NF4 失敗 | 缺少 bitsandbytes 或 GPU 核心不相容 | 確認 bitsandbytes 與 GPU 及 CUDA 或 ROCm 版本匹配。使用 `--load_in_4bit False` 可載入未量化權重 |
+| MPS 運算子不受支援 | PyTorch 缺少該運算子的 MPS 實作 | 啟動 Python 前，先設置 `PYTORCH_ENABLE_MPS_FALLBACK=1`，讓支援備援的運算交由 CPU 執行 |
 | Hub 下載 / SSL 錯誤 | conda/Windows 上 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` 損壞 | `src/train.py` 與 `src/inference.py` 啟動時會自動修復；或手動修正環境變數 |
 | 訓練損失出現 NaN | 學習率過高或資料類型問題 | 調低 `--learning_rate`（或 `--lr`）或改用 `--torch_dtype bfloat16` |
 | 模型不斷重複相同句子 | 過擬合或溫度過低 | 提高 `--temperature` 或減少 `--num_epochs` |
