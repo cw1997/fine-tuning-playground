@@ -74,12 +74,13 @@ fine-tuning-playground/
 │   ├── inference.py        # Inference script (base / finetuned / compare modes)
 │   ├── inspect_model.py    # Model internals inspection (params, vocab, dims, config)
 │   └── inspect_tokenizer.py # Tokenizer inspection (token pieces, ids, embedding vectors)
-├── data/                   # Datasets and generators
-│   ├── generate_ntnu_dataset.py  # Aggregates ntnu/ + taiwan/ into full_dataset.jsonl
-│   ├── restructure_dataset.py    # Splits ntnu_dataset.jsonl into categorized files
-│   ├── ntnu_dataset.jsonl       # Bundled dataset (~1.2K ChatML records)
-│   └── _archive/                # Legacy record generator modules
-├── scripts/                # Installation helpers (shell/PowerShell)
+├── data/                   # Bundled datasets
+│   ├── ntnu_dataset.jsonl       # 1,252 ChatML records used by the walkthrough
+│   └── full_dataset.jsonl       # 1,746-record extended dataset
+├── scripts/                # Installation helpers (shell / PowerShell)
+│   ├── install_deps.py          # Backend-aware PyTorch and dependency installer
+│   ├── install_deps.sh          # Bash wrapper (forwards flags verbatim)
+│   └── install_deps.ps1         # PowerShell wrapper (-Backend / -Rocm4Bit)
 └── models/                 # Fine-tuned LoRA adapters (gitignored)
 ```
 
@@ -111,6 +112,6 @@ fine-tuning-playground/
 ## Requirements Maintenance
 
 - **`requirements.txt` MUST be kept in sync with the codebase.** Whenever a change introduces a new third-party import (a package not already declared), add it to `requirements.txt` in the same change.
-- Use minimum version pins with `>=` (e.g., `transformers>=4.47.0`), never exact versions.
+- Use minimum version pins with `>=` (e.g., `transformers>=5.12.1`), never exact versions.
 - Reuse existing declared packages when possible; only add a new entry when the dependency is genuinely new and directly imported.
 - If a package becomes unused after a refactor, consider removing its entry from `requirements.txt` in the same change.
