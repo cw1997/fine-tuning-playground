@@ -219,3 +219,8 @@ __marimo__/
 
 # Fine-tuned model outputs (LoRA adapters, checkpoints, tokenizers)
 models/
+
+.workbuddy/
+
+.idea/
+
