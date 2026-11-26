@@ -1,102 +1,22 @@
 # Fine-Tuning Playground
 
-A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3.5** decoder-only models (e.g. **Qwen3-4B**, **Qwen3.5-4B**) using **QLoRA / LoRA**. Built with Hugging Face `transformers`, `peft`, `trl`, and `bitsandbytes`, the entire training pipeline lives in a single top-to-bottom script (`src/train.py`) with all settings passed as CLI flags.
+## Project Introduction
 
----
+This repository is a teaching-oriented project that demonstrates **supervised fine-tuning (SFT)** end to end. It takes **Qwen3.5-4B** as the example base model and shows how to prepare data, train a LoRA / QLoRA adapter, inspect the model and tokenizer, compare responses before and after training, and evaluate the result.
 
-## Table of Contents
+### What is SFT?
 
-- [Fine-Tuning Playground](#fine-tuning-playground)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [Features](#features)
-  - [Hardware Requirements](#hardware-requirements)
-  - [Installation](#installation)
-    - [Option 1 — Miniconda (Recommended)](#option-1--miniconda-recommended)
-    - [Option 2 — venv](#option-2--venv)
-    - [Helper Scripts](#helper-scripts)
-  - [Quick Start](#quick-start)
-  - [Project Structure](#project-structure)
-    - [File Descriptions](#file-descriptions)
-  - [Configuration](#configuration)
-  - [Recommended Training Presets](#recommended-training-presets)
-    - [Platform & OS](#platform--os)
-    - [VRAM and Model Size (QLoRA)](#vram-and-model-size-qlora)
-    - [Dataset Size Guidelines](#dataset-size-guidelines)
-    - [Named Presets](#named-presets)
-    - [Preset Scripts](#preset-scripts)
-    - [Native Windows NTNU Benchmark](#native-windows-ntnu-benchmark)
-    - [Manual Commands by Preset](#manual-commands-by-preset)
-  - [Data Formats](#data-formats)
-    - [ChatML Format](#chatml-format)
-    - [Alpaca Format](#alpaca-format)
-    - [Text Format](#text-format)
-  - [Usage](#usage)
-    - [Basic Training](#basic-training)
-    - [Training with Alpaca Dataset](#training-with-alpaca-dataset)
-    - [Training from Hugging Face Hub](#training-from-hugging-face-hub)
-    - [Inference — Interactive (Default)](#inference--interactive-default)
-    - [Inference — One-Shot (`--no_interactive`)](#inference--one-shot---no_interactive)
-    - [Inference with Thinking Mode](#inference-with-thinking-mode)
-    - [Inspecting a Model](#inspecting-a-model)
-    - [Inspecting the Tokenizer](#inspecting-the-tokenizer)
-  - [Advanced Usage](#advanced-usage)
-    - [Custom LoRA Target Modules](#custom-lora-target-modules)
-    - [Push to Hugging Face Hub](#push-to-hugging-face-hub)
-    - [Full vs QLoRA](#full-vs-qlora)
-    - [Enable Thinking Mode During Training](#enable-thinking-mode-during-training)
-  - [Output Artifacts](#output-artifacts)
-  - [Tips \& Best Practices](#tips--best-practices)
-  - [Troubleshooting](#troubleshooting)
-  - [License](#license)
+A pretrained language model learns to predict the next token from a very large, general corpus. It has broad knowledge, but it has not been trained to reliably follow a user's instruction, answer in a chosen style, or stay within a domain. **Supervised fine-tuning (SFT)** is the step that bridges that gap: you continue training the model on a curated collection of prompt–answer pairs, so it learns to produce the kind of response you want.
 
----
+In this project, a training example is usually a ChatML conversation with `user` and `assistant` messages. The chat template turns those messages into the exact text the model sees, and `trl.SFTTrainer` computes the loss on that text. With `--assistant_only_loss`, the loss is restricted to the assistant's answer (and its end-of-turn token); the option `--use_thinking` enables Qwen's `<think>` reasoning tags in the template. After training, you can run `src/inference.py --mode compare` to see the same prompt answered by the untouched base model and by the fine-tuned model side by side.
 
-## Overview
+Instead of updating every weight in the model, the demo uses **LoRA**: small trainable matrices are added to the model's projection layers while the original weights stay frozen. **QLoRA** adds 4-bit NF4 quantization of the base weights, which is why a 4B model can be adapted on a consumer GPU.
 
-**Qwen3** and **Qwen3.5** are dense language models by Alibaba's Qwen team. The 4B variants support long context, grouped-query attention, and an optional chain-of-thought **thinking mode** (via `<think>` tags in the chat template).
+### Base model: Qwen3.5-4B
 
-This project provides a complete fine-tuning pipeline that lets you adapt these models to your own tasks and domains. It uses:
+**Qwen3.5-4B** ([model card](https://huggingface.co/Qwen/Qwen3.5-4B)) is a dense, decoder-only language model from Alibaba's Qwen team. The 4B size is a practical middle ground for a fine-tuning demo: it is large enough to give meaningful answers, yet small enough to run locally with 4-bit quantization. Like other Qwen3 / Qwen3.5 models, it supports long context, grouped-query attention, and an optional chain-of-thought **thinking mode** through `<think>` tags in the chat template.
 
-- **QLoRA** (4-bit NormalFloat quantization) to reduce memory footprint to ~6 GB VRAM, making fine-tuning accessible on consumer GPUs like the RTX 3060 / 4060 / 4070.
-- **`trl.SFTTrainer`** for supervised fine-tuning with chat template integration and evaluation loop.
-- **All 7 linear projection layers** (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`) as LoRA targets for optimal adaptation on a 4B-scale model.
-
----
-
-## Features
-
-- **QLoRA / LoRA support** — use 4-bit NF4 on NVIDIA CUDA and compatible AMD ROCm setups, or train with unquantized weights.
-- **Multiple data formats** — ChatML (native), Alpaca (instruction/input/output), and plain text.
-- **Hugging Face Hub integration** — load datasets directly from the Hub, and push trained adapters back.
-- **Thinking mode** — optionally enable Qwen3's `<think>` reasoning tags during training and inference.
-- **CLI-first design** — all hyperparameters configurable via command-line flags; no YAML files needed.
-- **Multiple compute backends** — train and run inference on NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), and Intel XPU, with a float32 CPU fallback.
-- **Single-file training script** — `src/train.py` runs the full SFT pipeline sequentially, ideal for walking through each step when teaching fine-tuning.
-- **Model inspection** — `src/inspect_model.py` prints a standardized report of model internals (parameter counts, vocabulary size, embedding dimension, layer layout) without needing a dataset.
-- **Tokenizer inspection** — `src/inspect_tokenizer.py` shows how a sentence is split into tokens, each token's vocabulary id, and its token embedding vector (or the index and vector of a single token).
-- **Pre / post fine-tuning comparison** — test the base model before fine-tuning, then compare responses side by side with the fine-tuned model to measure improvement.
-- **Interactive inference** — `src/inference.py` keeps the model loaded and accepts prompts in a loop by default; use `--no_interactive` for one-shot batch runs.
-- **Evaluation split** — automatic train/test split with best-model selection based on eval loss.
-- **Gradient checkpointing** — enabled by default to reduce memory usage during training.
-
----
-
-## Hardware Requirements
-
-| Configuration | Minimum VRAM | Typical GPU |
-|---|---|---|
-| QLoRA 4B (4-bit, batch size 1–2) | ~6–8 GB | RTX 3060 / 4060 / 4070, T4 |
-| QLoRA 9B (4-bit, batch size 1) | ~10–12 GB | RTX 4070 Ti / 5070 Ti (mobile), 3080 12 GB |
-| QLoRA 9B (4-bit, batch size 2) | ~20–24 GB | RTX 4090 / 3090 24 GB, A5000 |
-| LoRA 4B (16-bit, batch size 1) | ~12 GB | RTX 3080 / 4070 Ti / 4080, A10 |
-| CPU (no quantization, float32) | — | Any CPU (very slow; smoke tests only) |
-
-The VRAM figures above are NVIDIA examples. On Apple Silicon, model weights, activations, and the OS share unified memory. Start with Qwen3.5-0.8B when checking a new GPU.
-
-Training, inference, both inspection tools, and NTNU evaluation accept `--device auto|gpu|cuda|rocm|mps|xpu|cpu`. Auto-detection tries CUDA, ROCm, MPS, XPU, then CPU. `gpu` requires an available GPU and uses the same order. An explicit backend requires that backend to be available.
-
-Training and inference default to NF4 on NVIDIA CUDA. ROCm defaults to unquantized weights and accepts `--load_in_4bit True` when the installed GPU kernels pass a preflight check. MPS and XPU use unquantized weights. CPU uses unquantized `float32` weights. Both inspection tools default to unquantized weights on every backend.
+The commands in this README use `Qwen/Qwen3.5-4B` as the example `--model_id`. For fast CPU smoke tests the scripts fall back to `Qwen/Qwen3.5-0.8B` (`DEFAULT_MODEL_ID` in `src/model_utils.py`); when you train a 4B adapter, pass `--model_id Qwen/Qwen3.5-4B` and use the **same** value for inference and evaluation. Always pair a trained adapter with the base model it was trained from.
 
 ---
 
@@ -107,11 +27,9 @@ Use **Python 3.11 or 3.12** with a compatible PyTorch wheel. Use the Python vers
 ### Option 1 — Miniconda (Recommended)
 
 ```bash
-# Clone the repository
 git clone https://github.com/cw1997/fine-tuning-playground.git
 cd fine-tuning-playground
 
-# Create and activate a conda environment
 conda create -n finetune python=3.11 -y
 conda activate finetune
 
@@ -122,11 +40,9 @@ python scripts/install_deps.py
 ### Option 2 — venv
 
 ```bash
-# Clone the repository
 git clone https://github.com/cw1997/fine-tuning-playground.git
 cd fine-tuning-playground
 
-# Create a virtual environment
 python -m venv venv
 source venv/bin/activate  # Linux / macOS
 # venv\Scripts\activate   # Windows
@@ -160,11 +76,12 @@ Core packages:
 | `torch` | >= 2.4.0, < 2.12 | Deep learning framework (CUDA cu128 via `requirements.txt`) |
 | `transformers` | >= 5.12.1 | Qwen model loading, tokenization and training |
 | `peft` | >= 0.13.0 | LoRA / QLoRA adapter configuration |
-| `trl` | >= 1.6.0 | SFTTrainer with assistant labels and chunked loss |
+| `trl` | >= 1.6.0 | `SFTTrainer` with assistant labels and chunked loss |
 | `accelerate` | >= 1.13.0 | Trainer placement and mixed precision |
 | `bitsandbytes` | CUDA >= 0.46.1, ROCm >= 0.50.0 | Optional 4-bit quantization (QLoRA) |
 | `datasets` | >= 3.0.0 | Dataset loading and processing |
 | `packaging` | >= 21.0 | PyTorch version checks |
+| `certifi` | >= 2023.7.22 | CA bundle repair for Hub downloads |
 
 ---
 
@@ -172,7 +89,7 @@ Core packages:
 
 ### Cross-platform smoke test
 
-After installing your backend, run one training step on Qwen3.5-0.8B and reload the adapter. Replace `gpu` with `mps`, `rocm`, `xpu`, `cuda`, or `cpu` to set the target explicitly.
+After installing your backend, run one training step on Qwen3.5-0.8B (the scripts' default model) and reload the adapter. Replace `gpu` with `mps`, `rocm`, `xpu`, `cuda`, or `cpu` to set the target explicitly.
 
 ```bash
 python -c "from pathlib import Path; p=Path('models/backend-smoke'); p.mkdir(parents=True, exist_ok=True); (p/'train.jsonl').write_bytes(Path('data/ntnu_dataset.jsonl').read_bytes().splitlines(keepends=True)[0])"
@@ -180,40 +97,47 @@ python src/train.py --device gpu --dataset_path ./models/backend-smoke/train.jso
 python src/inference.py --device gpu --mode finetuned --adapter_path ./models/backend-smoke/adapter --prompt "What does a tokenizer do?" --max_new_tokens 32 --no_interactive
 ```
 
-On a compatible AMD GPU, exercise NF4 by using `--device rocm --load_in_4bit True` in both commands.
+On a compatible AMD GPU, exercise NF4 by adding `--load_in_4bit True` to both commands.
 
-### NVIDIA 4B preset
+### Qwen3.5-4B on NVIDIA CUDA
 
-Set up a CUDA environment and train on the complete bundled dataset:
+Train on the bundled NTNU dataset (1,252 ChatML examples), then compare the base model with the adapter:
 
 ```bash
-# 1. Clone and enter the repo
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
+# Train
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --device cuda \
+  --load_in_4bit True \
+  --torch_dtype bfloat16 \
+  --max_seq_length 2048 \
+  --num_epochs 3 \
+  --per_device_batch_size 2 \
+  --gradient_accum_steps 8 \
+  --learning_rate 2e-4 \
+  --lora_r 16 --lora_alpha 32 \
+  --test_split 0.05 \
+  --output_dir ./models/ntnu/gpu-12gb-4b
 
-# 2. Create and activate a conda environment (or use venv — see Installation)
-conda create -n finetune python=3.11 -y
-conda activate finetune
+# Before fine-tuning
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# 3. Install and verify CUDA
-python scripts/install_deps.py --backend cuda
+# After fine-tuning
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# 4. Run training with the bundled NTNU dataset (~1.2K ChatML examples)
-bash scripts/train_preset.sh gpu-12gb-4b
-# Or manually:
-# python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl --output_dir ./models/ntnu/gpu-12gb-4b
-
-# 5. Run inference with the base model (before fine-tuning)
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# 6. Run inference with the fine-tuned model
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# 7. Interactive chat with the fine-tuned model (type quit to exit)
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B --adapter_path ./models/ntnu/gpu-12gb-4b
+# Optional: interactive chat, or a side-by-side comparison
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
 ```
 
-See the [Usage](#usage) section for detailed training options and dataset formats.
+See [Usage](#usage) for more dataset formats, training options, and inference modes.
 
 ---
 
@@ -223,50 +147,51 @@ See the [Usage](#usage) section for detailed training options and dataset format
 fine-tuning-playground/
 ├── requirements.txt          # NVIDIA cu128 installation entry point
 ├── requirements-common.txt   # Shared Python dependencies
+├── LICENSE                   # MIT license
 ├── src/                      # Source scripts
 │   ├── train.py              # Full SFT pipeline (single file, top-to-bottom)
 │   ├── inference.py          # Interactive inference + base/finetuned/compare modes
 │   ├── evaluate_ntnu.py      # Greedy generation and blinded NTNU quality scoring
+│   ├── model_utils.py        # Shared tokenizer, model loading and SSL helpers
 │   ├── device_utils.py       # Backend selection, precision, and ROCm NF4 validation
 │   ├── inspect_model.py      # Model internals inspection (params, vocab, dims, config)
 │   └── inspect_tokenizer.py  # Tokenizer inspection (token pieces, ids, embedding vectors)
-├── data/                     # Training datasets and generators
-│   ├── ntnu_dataset.jsonl    # Bundled NTNU ChatML dataset (~1.2K examples)
-│   ├── full_dataset.jsonl    # Aggregated NTNU + Taiwan dataset (~1.7K examples)
-│   ├── generate_ntnu_dataset.py  # Aggregates ntnu/ + taiwan/ into full_dataset.jsonl
-│   ├── restructure_dataset.py    # Splits ntnu_dataset.jsonl into categorized files
+├── data/                     # Bundled training datasets
+│   ├── ntnu_dataset.jsonl    # 1,252 NTNU ChatML examples
+│   ├── full_dataset.jsonl    # 1,746 aggregated NTNU + Taiwan records
 │   ├── ntnu/                 # Categorized NTNU JSONL files
-│   ├── taiwan/               # Categorized Taiwan JSONL files
-│   └── _archive/             # Legacy record generator modules
-├── evaluation/ntnu_qa.jsonl  # 60 held-out prompts and grading criteria
-├── models/                   # Fine-tuned LoRA adapters and benchmark data (gitignored)
-├── scripts/                  # Install wrappers and training presets
-│   └── install_deps.py       # Backend-aware dependency installation and device check
+│   └── taiwan/               # Categorized Taiwan JSONL files
+├── evaluation/ntnu_qa.jsonl  # 60 held-out prompts with criteria (fact: + sources)
+├── models/                   # LoRA adapters and evaluation output (gitignored)
+├── scripts/                  # Dependency installers
+│   ├── install_deps.py       # Backend-aware installer and device verification
+│   ├── install_deps.sh       # Bash wrapper
+│   └── install_deps.ps1      # PowerShell wrapper
 ├── tests/
-│   └── test_device_utils.py   # Backend selection and quantization tests
-├── README.md                 # This file
+│   └── test_device_utils.py  # Backend selection and quantization tests
+├── README.md                 # English documentation
 └── README.zh-Hant.md         # Traditional Chinese documentation
 ```
 
 ### File Descriptions
 
-**`src/train.py`** — The complete supervised fine-tuning pipeline in one file. Runs sequentially: SSL fix → parse CLI args → detect device → load tokenizer → load base model (optional 4-bit) → apply LoRA → load & format dataset → configure `SFTTrainer` → train → save adapter. All hyperparameters are CLI flags; no separate config module.
+**`src/train.py`** — The complete supervised fine-tuning pipeline in one file. Runs sequentially: SSL fix → parse CLI args → resolve device → load tokenizer → load base model (optional 4-bit) → apply LoRA → load and format dataset → configure `SFTTrainer` → train → save adapter. All hyperparameters are CLI flags; there is no separate config module.
 
-**`src/inference.py`** — Standalone inference script for base model, fine-tuned model, or side-by-side comparison. By default, enters an interactive prompt loop after loading (`You:` prompt; type `quit` / `exit` / `q` to stop). CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--no_interactive`, `--load_in_4bit`, `--use_thinking`, `--max_new_tokens`, `--temperature`, `--top_p`, `--device`, `--torch_dtype`.
+**`src/inference.py`** — Standalone inference script for the base model, a fine-tuned model, or a side-by-side comparison. By default it enters an interactive loop after loading (`You:` prompt; type `quit`, `exit`, or `q` to stop). CLI flags: `--mode` (`base` / `finetuned` / `compare`), `--model_id`, `--adapter_path`, `--prompt`, `--load_in_4bit`, `--torch_dtype`, `--device`, `--max_new_tokens`, `--temperature`, `--top_p`, `--use_thinking`, `--no_interactive`.
 
-**`src/inspect_model.py`** — Model inspection script that prints a detailed, standardized English report of a model's internals: total / trainable / frozen parameter counts, token embedding shape and memory estimate, vocabulary size, layer layout, attention and FFN configuration, RoPE settings, and tokenizer metadata (special tokens, padding side, chat template). Useful for verifying a downloaded model before training. CLI flags: `--model_id`, `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_load` (config + tokenizer only).
+**`src/evaluate_ntnu.py`** — Generates deterministic answers for the fixed question set with `generate`, shuffles several runs for blinded review with `blind`, and applies the quality gates with `score`. **`evaluation/ntnu_qa.jsonl`** holds 60 held-out cases: 40 fact questions (each with an official source), 10 uncertainty questions, and 10 general questions. Keep these prompts out of training.
 
-**`src/inspect_tokenizer.py`** — Tokenizer inspection script that prints how a sentence is split into tokens (with each token's vocabulary id) and, for every token, its token embedding vector (shape, dtype, norm, and values) pulled from the model's input embedding layer. Also supports looking up a single token by string (`--token`) or by id (`--token_id`) to see its index position and vector. Byte-level tokens are displayed in readable form (GPT-style `Ġ` space prefixes become spaces). CLI flags: `--model_id`, `--sentence`, `--token`, `--token_id`, `--vector_limit` (elements per vector; `0` = all), `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_model` (tokenization and ids only).
+**`src/model_utils.py`** — Shared helpers for SSL certificate repair, tokenizer loading, NF4 configuration, and base-model loading. `DEFAULT_MODEL_ID` is `Qwen/Qwen3.5-0.8B` for smoke tests.
 
-**`data/`** — Contains the bundled `ntnu_dataset.jsonl` (~1,252 ChatML records about National Taiwan Normal University), the aggregated `full_dataset.jsonl` (~1.7K records covering NTNU plus Taiwan universities and districts), and the scripts that manage them: `restructure_dataset.py` splits `ntnu_dataset.jsonl` into categorized JSONL files under `ntnu/` and `taiwan/` (and generates new data for all Taiwan universities and districts), while `generate_ntnu_dataset.py` re-aggregates those organized subdirectories into the single `full_dataset.jsonl` training file. `_archive/` holds legacy record generator modules (`ntnu_extended_records.py`, `ntnu_massive_records{1-4}.py`) kept for reference.
+**`src/device_utils.py`** — Resolves the backend, effective dtype, and NF4 setting for all model commands, including a preflight check for ROCm 4-bit kernels.
 
-**`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — Named training presets for common GPU tiers and model sizes. Override the dataset with `DATASET_PATH=./data/my.jsonl`.
+**`src/inspect_model.py`** — Prints a standardized report of model internals: total / trainable / frozen parameter counts, token embedding shape and memory estimate, vocabulary size, layer layout, attention and FFN configuration, RoPE settings, and tokenizer metadata. CLI flags: `--model_id`, `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_load` (configuration and tokenizer only).
 
-**`src/device_utils.py`** resolves the backend, model dtype, and NF4 settings for all model commands. **`scripts/install_deps.py`** installs and verifies PyTorch through the Bash and PowerShell wrappers. **`requirements-common.txt`** contains the shared packages used by the installer and the CUDA requirements file.
+**`src/inspect_tokenizer.py`** — Prints how a sentence is split into tokens, each token's vocabulary id, and its embedding vector from the model's input embedding layer. Also supports a single token string (`--token`) or id (`--token_id`). Byte-level tokens are displayed in readable form. CLI flags: `--model_id`, `--sentence`, `--token`, `--token_id`, `--vector_limit` (`0` = all elements), `--load_in_4bit`, `--torch_dtype`, `--device`, `--no_model` (tokenization and ids only).
 
-**`tests/test_device_utils.py`** exercises backend selection with simulated hardware. Run it with `python -m unittest discover -s tests -v`.
+**`data/`** — Contains `ntnu_dataset.jsonl` (1,252 ChatML records about National Taiwan Normal University), `full_dataset.jsonl` (1,746 records covering NTNU plus Taiwan universities, districts, history, and culture), and categorized records under `ntnu/` and `taiwan/`.
 
-**`src/evaluate_ntnu.py`** generates deterministic adapter responses and prepares a shuffled, blinded review. **`evaluation/ntnu_qa.jsonl`** contains the fixed prompts, pass criteria and official sources for factual questions. Keep these prompts out of training.
+**`scripts/install_deps.py`** — Installs and verifies the chosen PyTorch backend and the shared dependencies; `install_deps.sh` and `install_deps.ps1` forward arguments to it. **`tests/test_device_utils.py`** simulates hardware to test backend and precision selection; run it with `python -m unittest discover -s tests -v`.
 
 ---
 
@@ -276,28 +201,28 @@ fine-tuning-playground/
 
 | Category | Parameter | Default | Description |
 |---|---|---|---|
-| **Model** | `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` on GPU) |
-| | `load_in_4bit` | On for CUDA | NF4 QLoRA. Set `True` on compatible ROCm and `False` for unquantized LoRA |
-| | `torch_dtype` | `bfloat16` | Computation dtype (falls back to `float32` on CPU) |
+| **Model** | `model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model identifier (use `Qwen/Qwen3.5-4B` for the demo) |
+| | `load_in_4bit` | On for CUDA | NF4 QLoRA. Set `True` on compatible ROCm; MPS / XPU reject it; CPU uses unquantized weights |
+| | `torch_dtype` | `bfloat16` | Computation dtype (always `float32` on CPU; FP16 when BF16 is unavailable) |
 | **LoRA** | `lora_r` | `16` | LoRA rank |
 | | `lora_alpha` | `32` | LoRA scaling factor (commonly 2 × r) |
 | | `lora_dropout` | `0.05` | Dropout for LoRA layers |
-| | `target_modules` | All 7 linear layers | Comma-separated module names (e.g. `q_proj,k_proj,v_proj,o_proj`) |
-| **Data** | `dataset_path` | _(required)_ | Local JSON/JSONL file, directory of JSONL files (recursive), or HF dataset name (local paths must start with `./`, `.`, or `/`) |
+| | `target_modules` | All 7 linear layers | Comma-separated module names (default `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`) |
+| **Data** | `dataset_path` | _(required)_ | Local JSON/JSONL file, directory of JSONL files (recursive), or HF dataset name. Existing local paths are detected automatically |
 | | `dataset_format` | `chat` | Input format: `chat`, `alpaca`, or `text` |
 | | `test_split` | `0.05` | Fraction for evaluation (0 = no eval) |
 | | `seed` | `42` | Seed for dataset splitting, adapter initialization and sampling |
 | | `max_seq_length` | `4096` | Max token length for each example |
-| | `use_thinking` | `False` | Enable thinking mode in chat template |
+| | `use_thinking` | `False` | Enable thinking mode in the chat template |
 | **Training** | `learning_rate` (`--lr`) | `2e-4` | Peak learning rate |
 | | `num_epochs` (`--epochs`) | `3` | Training epochs |
 | | `per_device_batch_size` (`--batch_size`) | `2` | Batch size per device |
 | | `gradient_accum_steps` | `8` | Gradient accumulation steps |
 | | `gradient_checkpointing` | `True` | Recompute activations to reduce peak GPU memory |
 | | `group_by_length` | off | Batch similarly sized training examples to reduce padding |
-| | `assistant_only_loss` | off | For supported chat templates, supervise assistant responses and their end-of-turn token. Rejects truncated targets |
+| | `assistant_only_loss` | off | For chat data, supervise assistant responses and their end-of-turn token; rejects truncated targets |
 | | `loss_type` | TRL default | Choose `nll` or `chunked_nll`. Chunking can reduce vocabulary projection memory |
-| | `eval_each_epoch` | off | Evaluate and save each epoch, then export the lowest-loss checkpoint |
+| | `eval_each_epoch` | off | Evaluate and save each epoch, then load the lowest-loss checkpoint |
 | | `eval_batch_size` | `8` | Evaluation batch size per device |
 | | `warmup_ratio` | `0.03` | Linear warmup fraction |
 | | `logging_steps` | `10` | Log metrics every N steps |
@@ -317,15 +242,15 @@ fine-tuning-playground/
 | **Model** | `model_id` | `Qwen/Qwen3.5-0.8B` | Base model (must match the model you fine-tuned) |
 | | `mode` | `base` | `base`, `finetuned`, or `compare` |
 | | `adapter_path` | — | LoRA adapter directory (required for `finetuned` / `compare`) |
-| | `load_in_4bit` | On for CUDA | NF4 inference. Set `True` on compatible ROCm and `False` for unquantized inference |
+| | `load_in_4bit` | On for CUDA | NF4 inference. Set `True` on compatible ROCm; MPS / XPU reject it; CPU uses unquantized weights |
 | | `torch_dtype` | `bfloat16` | Computation dtype |
 | | `device` | `auto` | `auto`, `gpu`, `cuda`, `rocm`, `mps`, `xpu`, `cpu` |
-| **Generation** | `prompt` | — | Single test prompt (omit to skip batch test) |
+| **Generation** | `prompt` | — | Single test prompt; **required** when `--no_interactive` is set |
 | | `max_new_tokens` | `2048` | Max generation tokens |
 | | `temperature` | `0.7` | Sampling temperature |
 | | `top_p` | `0.9` | Nucleus sampling threshold |
-| | `use_thinking` | `False` | Enable thinking mode in chat template |
-| | `no_interactive` | `False` | Exit after batch inference instead of entering the prompt loop |
+| | `use_thinking` | `False` | Enable thinking mode in the chat template |
+| | `no_interactive` | `False` | Run the batch prompt once and exit instead of entering the interactive loop |
 
 ### Inspection (`src/inspect_model.py`)
 
@@ -353,228 +278,42 @@ fine-tuning-playground/
 
 At least one of `--sentence`, `--token`, or `--token_id` is required.
 
-> **Note:** Both `src/train.py` and `src/inference.py` default `--model_id` to `Qwen/Qwen3.5-0.8B` (CPU smoke tests). For GPU training, pass `--model_id Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B`, and use the **same** `--model_id` at inference. In `src/inference.py`, omitting `--prompt` skips batch tests and goes straight to the interactive loop; with `--no_interactive` and no `--prompt`, two built-in NTNU test prompts are used.
-
----
+> **Note:** Both `src/train.py` and `src/inference.py` default `--model_id` to `Qwen/Qwen3.5-0.8B` for CPU smoke tests. Pass `--model_id Qwen/Qwen3.5-4B` for the demo, and use the same id at inference and evaluation. In `src/inference.py`, omitting `--prompt` skips the batch run and goes straight to the interactive loop; `--no_interactive` requires a non-empty `--prompt`.
 
 ### NTNU evaluation (`src/evaluate_ntnu.py generate`)
 
 | Argument | Default | Description |
 |---|---|---|
+| `--cases` (global, before `generate`) | `evaluation/ntnu_qa.jsonl` | Compatible JSONL question file |
+| `model_id` | _(required)_ | Base model used by the adapter |
+| `adapter_path` | _(required)_ | Adapter directory (or a parent containing `checkpoint-*`) |
 | `device` | `gpu` | `auto`, `gpu`, `cuda`, `rocm`, `mps`, `xpu`, `cpu` |
 | `load_in_4bit` | On for CUDA | Explicit `True` or `False` for NF4. On ROCm, opt in with `True` |
-| `bf16_weights` | Off | Use unquantized weights with BF16 when supported. Use this flag by itself |
+| `bf16_weights` | off | Use unquantized weights with BF16 when supported. Mutually exclusive with `--load_in_4bit` |
+| `batch_size` | `4` | Generation batch size |
+| `max_new_tokens` | `192` | Answer length cap |
+| `output` | _(required)_ | JSON file for resumable answers and run metadata |
 
-Evaluation output records the effective backend, dtype, and quantization for resuming a run. Legacy files can resume using the original CUDA/BF16 configuration. Use a fresh output path when switching hardware backends or precision.
+Generation uses greedy decoding and writes the effective backend, dtype, and quantization into the output for resume checks. Use a fresh output path when switching hardware backends or precision. See [NTNU evaluation workflow](#ntnu-evaluation-workflow) for the `blind` and `score` steps.
 
-## Recommended Training Presets
+---
 
-The GPU QLoRA presets use CUDA or compatible ROCm with bitsandbytes installed. They request **`bfloat16`**, **ChatML format** (`--dataset_format chat`), and an **effective batch size of 16** (`per_device_batch_size × gradient_accum_steps`). For MPS and XPU, use the unquantized commands in [Quick Start](#quick-start). Presets enable a 5% eval split and save the best checkpoint by eval loss.
+## Training Recommendations
 
-The bundled NTNU dataset (`./data/ntnu_dataset.jsonl`) contains **~1,252** examples — presets default to **3 epochs** and **lr = 2e-4** for this size. Use the [dataset-size adjustments](#dataset-size-guidelines) below when training on larger custom data.
-
-### Platform & OS
-
-| Platform | Install | List presets | Run training | Notes |
-|---|---|---|---|---|
-| **Linux** | `bash scripts/install_deps.sh` | `bash scripts/train_preset.sh --list` | `bash scripts/train_preset.sh gpu-12gb-4b` | Native CUDA recommended |
-| **Apple Silicon macOS** | `bash scripts/install_deps.sh --backend mps` | same as Linux | [Cross-platform smoke test](#cross-platform-smoke-test) | Use `--device mps` |
-| **Windows (PowerShell)** | `powershell -File scripts/install_deps.ps1` | `powershell -File scripts/train_preset.ps1 -List` | `powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b` | Set `$env:PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` if OOM |
-| **Windows (Git Bash)** | `bash scripts/install_deps.sh` | same as Linux | same as Linux | Same commands as Linux |
-
-Override the dataset, output directory, or hyperparameters without editing scripts:
-
-```bash
-# Custom dataset (Linux / Git Bash)
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-
-# Larger dataset — fewer epochs (30K+ examples)
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl bash scripts/train_preset.sh gpu-24gb-9b
-
-# Custom output directory
-OUTPUT_DIR=./models/my-run bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-```powershell
-# Custom dataset (Windows PowerShell)
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b
-
-# Larger dataset — fewer epochs
-$env:NUM_EPOCHS = "2"
-$env:LEARNING_RATE = "1.5e-4"
-$env:DATASET_PATH = ".\data\large.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-### VRAM and Model Size (QLoRA)
-
-Starting points before applying [dataset-size](#dataset-size-guidelines) tuning. Reduce `--max_seq_length` first if you hit OOM; then try `--target_modules q_proj,k_proj,v_proj,o_proj`.
-
-| VRAM | Model | Batch | Accum | Eff. Batch | Max Seq | LoRA r | Epochs | LR | Typical GPU |
-|---|---|---|---|---|---|---|---|---|---|
-| 6–8 GB | Qwen3.5-4B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 / 4060 / 4070 |
-| 12 GB | Qwen3.5-4B | 2 | 8 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 12 GB / 4070 |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 1536 | 16 | 3 | 2e-4 | RTX 5070 Ti laptop |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | Attention-only LoRA if OOM |
-| 16 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4080 16 GB / 4070 Ti Super |
-| 24 GB | Qwen3.5-4B | 2 | 8 | 16 | 4096 | 32 | 3 | 2e-4 | RTX 3090 / 4090 |
-| 24 GB | Qwen3.5-9B | 2 | 8 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4090 / A5000 |
-| CPU | Qwen3.5-0.8B | 1 | 4 | 4 | 512 | 8 | 1 | 2e-4 | Smoke test only; `--device cpu` |
+This project uses `bfloat16`, ChatML data (`--dataset_format chat`, the default), and an effective batch size of `per_device_batch_size × gradient_accum_steps`. With the default `test_split 0.05`, the trainer evaluates on the held-out split and loads the lowest-eval-loss checkpoint at the end. Reduce `--max_seq_length` first if a run does not fit in memory.
 
 ### Dataset Size Guidelines
 
-Apply these on top of a [hardware preset](#vram-and-model-size-qlora). Effective batch size should stay in the **16–32** range.
+| Examples | Epochs | Learning Rate | test_split | Notes |
+|---|---|---|---|---|
+| < 500 | 3–5 | 1e-4 | 0.10 | High overfit risk; monitor eval loss |
+| 500 – 5,000 | 3 | 2e-4 | 0.05 | Bundled NTNU (1,252); good default for small custom sets |
+| 5,000 – 30,000 | 2–3 | 1.5e-4 – 2e-4 | 0.05 | Higher LoRA rank helps domain adaptation |
+| 30,000+ | 1–2 | 1.5e-4 | 0.05 | Avoid 3+ epochs; watch for overfitting |
 
-| Examples | Epochs | Learning Rate | LoRA r | test_split | Preset override | Notes |
-|---|---|---|---|---|---|---|
-| < 500 | 3–5 | 1e-4 | 16 | 0.10 | `LEARNING_RATE=1e-4 NUM_EPOCHS=5` | High overfit risk; monitor eval loss |
-| 500 – 5,000 | 3 | 2e-4 | 16 | 0.05 | _(preset defaults)_ | **Bundled NTNU (~1.2K)**; good default for small custom sets |
-| 5,000 – 30,000 | 2–3 | 1.5e-4 – 2e-4 | 32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | Higher rank helps domain adaptation |
-| 30,000+ | 1–2 | 1.5e-4 | 16–32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | Avoid 3+ epochs; watch for overfitting |
+### Example Commands
 
-**Combined example — 12 GB laptop + bundled NTNU (~1.2K):**
-
-```bash
-bash scripts/train_preset.sh gpu-12gb-4b
-# Equivalent manual command — see [Manual Commands](#manual-commands-by-preset)
-```
-
-**Combined example — 24 GB desktop + 50K custom examples:**
-
-```bash
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
-  bash scripts/train_preset.sh gpu-24gb-9b
-```
-
-### Named Presets
-
-| Preset | Target Hardware | Model | Purpose |
-|---|---|---|---|
-| `smoke-4b` | CUDA or compatible ROCm | Qwen3.5-4B | 1-epoch pipeline check |
-| `smoke-9b` | 12 GB+ GPU | Qwen3.5-9B | 1-epoch pipeline check (12 GB friendly) |
-| `cpu-smoke` | CPU only | Qwen3.5-0.8B | Verify install without GPU |
-| `gpu-8gb-4b` | 6–8 GB | Qwen3.5-4B | Entry-level consumer GPU |
-| `gpu-12gb-4b` | 12 GB | Qwen3.5-4B | Balanced 4B on 12 GB |
-| `gpu-12gb-9b` | 12 GB mobile/desktop | Qwen3.5-9B | **Recommended for RTX 5070 Ti 12 GB laptop** |
-| `gpu-12gb-9b-long` | 12 GB | Qwen3.5-9B | Longer answers (2048 seq, attention-only LoRA) |
-| `gpu-16gb-9b` | 16 GB | Qwen3.5-9B | Full 7-layer LoRA, r=32 |
-| `gpu-24gb-4b` | 24 GB | Qwen3.5-4B | High-quality 4B, long context |
-| `gpu-24gb-9b` | 24 GB | Qwen3.5-9B | **Recommended desktop 9B training** |
-
-### Preset Scripts
-
-Optional: reduce CUDA fragmentation on Windows / Git Bash before training:
-
-```bash
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-```
-
-**Linux / macOS / Git Bash:**
-
-```bash
-# List all presets
-bash scripts/train_preset.sh --list
-
-# Smoke test (recommended before a full run)
-bash scripts/train_preset.sh smoke-9b
-
-# Full training — 12 GB laptop with Qwen3.5-9B (bundled NTNU dataset)
-bash scripts/train_preset.sh gpu-12gb-9b
-
-# Custom dataset
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-24gb-9b
-
-# Custom output directory
-OUTPUT_DIR=./models/my-run DATASET_PATH=./data/my.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-**Windows PowerShell:**
-
-```powershell
-# List all presets
-powershell -File scripts/train_preset.ps1 -List
-
-# Smoke test
-powershell -File scripts/train_preset.ps1 -Preset smoke-9b
-
-# Full training — 12 GB laptop
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-9b
-
-# Custom dataset
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-### Native Windows NTNU Benchmark
-
-Use a CUDA Python environment. The RTX 5070 Ti Laptop check used Python 3.11,
-PyTorch 2.11.0+cu128, Transformers 5.12.1, TRL 1.6.0, PEFT 0.19.1 and
-bitsandbytes 0.49.2. Confirm your active Python reports CUDA before starting.
-
-Model revisions cached for these checks:
-
-- `Qwen/Qwen3.5-4B` at `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`
-- `Qwen/Qwen3-4B-Instruct-2507` at `cdbee75f17c01a7cc42f958dc650907174af0554`
-- `Qwen/Qwen3.5-2B` at `15852e8c16360a2fea060d615a32b45270f8a8fc`
-
-```powershell
-conda activate ai
-python -c "import torch; print(torch.__version__, torch.cuda.get_device_name())"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -List
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-baseline -BenchmarkSteps 10
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-qwen3-4b -BenchmarkSteps 10
-```
-
-The other candidates are `ntnu-win-qwen35-4b` (NF4) and `ntnu-win-qwen35-2b`
-(BF16 weights). All use effective batch 16 and the bundled 5% validation split.
-Pass `-RunMetrics` a distinct JSON path for each repeat. If a candidate runs out
-of GPU memory, retry with `-Checkpointing True`, then halve `-MicroBatch` as needed.
-The script adjusts accumulation automatically. For a one-step smoke check,
-pass `-BenchmarkSteps 1 -BenchmarkWarmupSteps 0`. `-AssistantOnly` enables assistant
-labels, and `-LossType chunked_nll` requests the chunked loss. Omit
-`-BenchmarkSteps` for full training. The baseline runs for three epochs and the
-candidates for two. To compare three epochs, set `NUM_EPOCHS` to `3` and set
-`OUTPUT_DIR` to a fresh path. `-PythonExecutable` selects an explicit interpreter.
-
-Generate answers with the candidate's actual model and weights. Add
-`--bf16_weights` for the 2B BF16 candidate. For interactive use, pass the same model
-and adapter to `src/inference.py --mode finetuned`, with `--load_in_4bit False`
-for BF16. This example uses the Qwen3-4B candidate:
-
-```powershell
-$results = "models/ntnu/windows-comparison"
-$model = "Qwen/Qwen3-4B-Instruct-2507"
-$adapter = "$results/ntnu-win-qwen3-4b"
-python src/evaluate_ntnu.py generate --model_id $model --adapter_path $adapter --output "$results/candidate.json"
-python src/inference.py --mode finetuned --device gpu --model_id $model --adapter_path $adapter
-```
-
-Run generation for the existing and retrained 4B baselines, then pass the three
-response files to `blind`. Review each answer against every listed criterion.
-The 40 fact prompts include 24 direct questions and 16 source-grounded questions.
-Use the same `generate --batch_size` (default 4) and `--max_new_tokens` (default
-192) for each model. Generation defaults to `--device gpu`. The top-level
-`--cases` option selects a compatible JSONL file before the subcommand.
-Mark `major` for fabricated material facts such as invented eligibility, deadlines,
-amounts, addresses or instructions. Mark `pass` only when every criterion is met
-and factual answers use Traditional Chinese. Fill in both booleans and note failures,
-then pass the reviewed file and its separate key to `score`.
-
-```powershell
-python src/evaluate_ntnu.py blind "existing=$results/existing.json" "baseline=$results/baseline.json" "candidate=$results/candidate.json" --output "$results/review.json" --key "$results/key.json"
-python src/evaluate_ntnu.py score --review "$results/review.json" --key "$results/key.json" --baselines existing baseline --output "$results/quality.json"
-```
-
-Adopt a candidate when it passes the quality rubric and cuts complete warm-cache
-run time by at least 25%. Compare `elapsed_seconds` in the metrics files and
-record first-time model download separately. For comparable GPU timings, run one
-training or inference workload at a time. On Windows, check dedicated and shared
-GPU memory in Task Manager when a step stalls or CUDA reports an unknown error.
-
-### Manual Commands by Preset
-
-Use these when you prefer a single copy-paste command without the helper script.
+These commands call `src/train.py` directly; no preset scripts are required.
 
 **Smoke test — Qwen3.5-4B (any GPU):**
 
@@ -592,34 +331,10 @@ python src/train.py \
   --learning_rate 2e-4 \
   --lora_r 16 --lora_alpha 32 \
   --test_split 0.05 \
-  --save_steps 200 \
   --output_dir ./models/ntnu/smoke-4b
 ```
 
-**12 GB — Qwen3.5-4B + NTNU (~1.2K):**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-4B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu \
-  --load_in_4bit True \
-  --torch_dtype bfloat16 \
-  --max_seq_length 2048 \
-  --num_epochs 3 \
-  --per_device_batch_size 2 \
-  --gradient_accum_steps 8 \
-  --learning_rate 2e-4 \
-  --lora_r 16 --lora_alpha 32 \
-  --lora_dropout 0.05 \
-  --warmup_ratio 0.03 \
-  --test_split 0.05 \
-  --logging_steps 10 \
-  --save_steps 200 \
-  --output_dir ./models/ntnu/gpu-12gb-4b
-```
-
-**12 GB laptop — Qwen3.5-9B + NTNU (~1.2K):**
+**12 GB GPU — Qwen3.5-9B:**
 
 ```bash
 python src/train.py \
@@ -634,41 +349,16 @@ python src/train.py \
   --gradient_accum_steps 16 \
   --learning_rate 2e-4 \
   --lora_r 16 --lora_alpha 32 \
-  --lora_dropout 0.05 \
-  --warmup_ratio 0.03 \
   --test_split 0.05 \
-  --logging_steps 10 \
-  --save_steps 250 \
   --output_dir ./models/ntnu/gpu-12gb-9b
 ```
 
-**24 GB desktop — Qwen3.5-9B + NTNU (~1.2K):**
+**24 GB GPU — Qwen3.5-9B on a larger dataset:**
 
 ```bash
 python src/train.py \
   --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu \
-  --load_in_4bit True \
-  --torch_dtype bfloat16 \
-  --max_seq_length 2048 \
-  --num_epochs 3 \
-  --per_device_batch_size 2 \
-  --gradient_accum_steps 8 \
-  --learning_rate 2e-4 \
-  --lora_r 32 --lora_alpha 64 \
-  --lora_dropout 0.05 \
-  --test_split 0.05 \
-  --save_steps 300 \
-  --output_dir ./models/ntnu/gpu-24gb-9b
-```
-
-**24 GB desktop — Qwen3.5-9B + large custom dataset (30K+ examples):**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/large_dataset.jsonl \
+  --dataset_path ./data/full_dataset.jsonl \
   --device gpu \
   --load_in_4bit True \
   --torch_dtype bfloat16 \
@@ -678,33 +368,49 @@ python src/train.py \
   --gradient_accum_steps 8 \
   --learning_rate 1.5e-4 \
   --lora_r 32 --lora_alpha 64 \
-  --lora_dropout 0.05 \
   --test_split 0.05 \
-  --save_steps 300 \
-  --output_dir ./models/custom/gpu-24gb-9b
+  --output_dir ./models/ntnu/gpu-24gb-9b
 ```
 
-**Post-training comparison:**
+---
+
+## NTNU Evaluation Workflow
+
+The fixed question set contains 60 cases: 40 fact questions (each with an official source), 10 questions about uncertain claims, and 10 general questions. Do not include them in training data.
+
+Generate answers for each adapter you want to compare, then prepare a blinded review. `blind` expects unique `NAME=PATH` arguments and writes a separate key file; `score` needs exactly two baseline names.
 
 ```bash
-python src/inference.py \
-  --mode compare \
+python src/evaluate_ntnu.py generate \
   --model_id Qwen/Qwen3.5-4B \
   --adapter_path ./models/ntnu/gpu-12gb-4b \
-  --load_in_4bit True \
-  --prompt "請簡單介紹國立臺灣師範大學。" \
-  --no_interactive
+  --output ./models/ntnu/eval/candidate.json
+
+python src/evaluate_ntnu.py blind \
+  "existing=./models/ntnu/eval/existing.json" \
+  "baseline=./models/ntnu/eval/baseline.json" \
+  "candidate=./models/ntnu/eval/candidate.json" \
+  --output ./models/ntnu/eval/review.json \
+  --key ./models/ntnu/eval/key.json
+
+python src/evaluate_ntnu.py score \
+  --review ./models/ntnu/eval/review.json \
+  --key ./models/ntnu/eval/key.json \
+  --baselines existing baseline \
+  --output ./models/ntnu/eval/quality.json
 ```
+
+Review each answer against every listed criterion. Mark `major` for fabricated material facts such as invented eligibility, deadlines, amounts, addresses, or instructions. Mark `pass` only when every criterion is met and factual answers use Traditional Chinese; fill in both booleans and a note for failures. The `score` command gives a candidate `passes_quality` only when fact ≥ `max(34, both baselines)`, uncertain ≥ 8, general ≥ `best baseline − 1`, and `major == 0`. In addition, compare `elapsed_seconds` from `--run_metrics` runs and run one training or inference workload at a time for comparable timings.
 
 ---
 
 ## Data Formats
 
-The pipeline supports three input formats. All are normalized to the ChatML message format internally.
+The pipeline supports three input formats. All are normalized into a chat representation before training.
 
 ### ChatML Format
 
-This is the native format for Qwen3. Each JSON object (one per line in JSONL, or as list items in JSON) contains a `"messages"` key:
+This is the native format for Qwen3 / Qwen3.5. Each JSON object (one per line in JSONL, or as a list item in JSON) contains a `messages` key:
 
 ```json
 {
@@ -716,7 +422,7 @@ This is the native format for Qwen3. Each JSON object (one per line in JSONL, or
 }
 ```
 
-The system message is optional. This format requires `--dataset_format chat` (the default).
+The system message is optional. This format uses `--dataset_format chat` (the default).
 
 ### Alpaca Format
 
@@ -730,19 +436,11 @@ The Stanford Alpaca format uses three fields: `instruction`, `input`, and `outpu
 }
 ```
 
-```json
-{
-  "instruction": "Translate the following to French.",
-  "input": "Hello, how are you?",
-  "output": "Bonjour, comment allez-vous ?"
-}
-```
-
-This format requires `--dataset_format alpaca`.
+This format uses `--dataset_format alpaca`.
 
 ### Text Format
 
-A flat text format where each example is a single `"text"` field containing the full conversation. The pipeline splits on `<|im_end|>\n<|im_start|>` to recover alternating user/assistant turns:
+A flat text format where each example is a single `text` field containing the full conversation. The pipeline splits on `<|im_end|>\n<|im_start|>` to recover alternating user/assistant turns:
 
 ```json
 {
@@ -750,7 +448,7 @@ A flat text format where each example is a single `"text"` field containing the 
 }
 ```
 
-This format requires `--dataset_format text`.
+This format uses `--dataset_format text`.
 
 ---
 
@@ -762,144 +460,130 @@ Train on a local JSONL file where each line is a ChatML-formatted conversation:
 
 ```bash
 python src/train.py \
-    --model_id Qwen/Qwen3.5-4B \
-    --dataset_path ./data/my_dataset.jsonl \
-    --output_dir ./my-finetuned-model
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/my_dataset.jsonl \
+  --output_dir ./models/my-adapter
 ```
 
-`--dataset_path` also accepts a directory of JSONL files (scanned recursively), so the whole `data/` tree can be passed directly:
+`--dataset_path` also accepts a directory of JSONL files (scanned recursively), so the whole `data/` tree can be passed directly. Existing local paths are recognized automatically; if the path does not exist locally, it is treated as a Hugging Face dataset name.
 
 ```bash
 python src/train.py \
-    --model_id Qwen/Qwen3.5-4B \
-    --dataset_path ./data \
-    --output_dir ./models/ntnu
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data \
+  --output_dir ./models/ntnu
 ```
 
-### Training with Alpaca Dataset
+### Training with an Alpaca Dataset
 
 ```bash
 python src/train.py \
-    --dataset_path ./data/alpaca_data.json \
-    --dataset_format alpaca \
-    --lr 2e-4 \
-    --epochs 5 \
-    --output_dir ./alpaca-finetuned
+  --dataset_path ./data/alpaca_data.json \
+  --dataset_format alpaca \
+  --lr 2e-4 \
+  --epochs 5 \
+  --output_dir ./models/alpaca-finetuned
 ```
 
 ### Training from Hugging Face Hub
 
-Load a dataset directly from the Hugging Face Hub:
+Use a Hub dataset whose fields match the selected format. For example, `tatsu-lab/alpaca` has `instruction`, `input`, and `output` fields:
 
 ```bash
 python src/train.py \
-    --dataset_path databricks/databricks-dolly-15k \
-    --dataset_format alpaca \
-    --max_seq_length 2048 \
-    --output_dir ./dolly-finetuned
+  --dataset_path tatsu-lab/alpaca \
+  --dataset_format alpaca \
+  --max_seq_length 2048 \
+  --output_dir ./models/alpaca-hub-finetuned
 ```
 
 ### Inference — Interactive (Default)
 
 By default, `src/inference.py` keeps the model loaded and enters an interactive prompt loop. Type your question at the `You:` prompt; enter `quit`, `exit`, or `q` (or press Ctrl+C) to exit.
 
-- **No `--prompt`**: skips batch tests and goes straight to the input loop.
+- **No `--prompt`**: skips the batch run and goes straight to the input loop.
 - **With `--prompt`**: runs that prompt once, then continues interactively.
 
 ```bash
 # Fine-tuned model — interactive chat
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu/gpu-12gb-4b
+  --adapter_path ./models/ntnu/gpu-12gb-4b
 
 # Base model — run one prompt, then continue interactively
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-    --prompt "台灣師範大學的地址是什麼"
+  --prompt "台灣師範大學的地址是什麼"
 
 # Compare mode — each input shows base vs fine-tuned responses
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/ntnu/gpu-12gb-4b
+  --adapter_path ./models/ntnu/gpu-12gb-4b
 ```
 
 ### Inference — One-Shot (`--no_interactive`)
 
-For scripts, CI, or quick baseline comparisons, pass `--no_interactive` to run batch inference once and exit. Without `--prompt`, two built-in NTNU test prompts are used.
+For scripts or CI, pass `--no_interactive` to run one prompt and exit. **A non-empty `--prompt` is required**; the script errors out if `--no_interactive` is used without one.
 
 ```bash
 # Base model baseline (before fine-tuning)
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-    --prompt "台灣師範大學的地址是什麼" --no_interactive
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
 
 # Fine-tuned model (after training)
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./my-finetuned-model \
-    --prompt "台灣師範大學的地址是什麼" --no_interactive
+  --adapter_path ./models/my-adapter \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# Side-by-side comparison (batch mode, built-in test prompts)
+# Side-by-side comparison
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./models/my-finetuned-model --no_interactive
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
 ```
 
 ### Inference with Thinking Mode
 
-To enable Qwen3's chain-of-thought reasoning, pass `--use_thinking True`. Unless `--no_interactive` is set, the script continues to the interactive loop after the initial `--prompt` run.
+To enable Qwen3 / Qwen3.5 chain-of-thought reasoning, pass `--use_thinking True`. Unless `--no_interactive` is set, the script continues to the interactive loop after the initial `--prompt` run.
 
 ```bash
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-    --adapter_path ./my-finetuned-model \
-    --use_thinking True \
-    --prompt "台灣師範大學的地址是什麼"
+  --adapter_path ./models/my-adapter \
+  --use_thinking True \
+  --prompt "台灣師範大學的地址是什麼"
 ```
 
 ### Inspecting a Model
 
-`src/inspect_model.py` prints a standardized report of a model's internals without needing any dataset. Useful to verify a downloaded checkpoint before training.
+`src/inspect_model.py` prints a standardized report of a model's internals without needing a dataset.
 
 ```bash
-# Config + tokenizer + weights (default)
+# Configuration + tokenizer + weights (default)
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B
 
-# Config + tokenizer only (fast; skips weight download/loading)
+# Configuration + tokenizer only (skips weight loading)
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --no_load
 
 # Load with 4-bit quantization to inspect quantized parameter counts
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
 ```
 
-The report covers three sections:
-
-- **Model configuration** — vocabulary size, hidden (embedding) dimension, number of layers / attention heads / KV heads, head dimension, intermediate (FFN) size, max position embeddings, context length, activation function, RoPE theta, and whether word embeddings are tied.
-- **Tokenizer** — tokenizer class, vocabulary size, padding / truncation side, chat template availability, and special tokens with their IDs.
-- **Model weights** (skipped with `--no_load`) — model class, total / trainable / frozen parameter counts and trainable ratio, token embedding shape, embedding memory estimate, parameter and embedding dtypes, and device placement.
+The report covers model configuration (vocabulary size, embedding dimension, layers, attention heads, KV heads, head dimension, FFN size, context length, activation, RoPE theta, tied embeddings), tokenizer metadata, and loaded weights (parameter counts, embedding shape and memory estimate, dtypes, device placement).
 
 ### Inspecting the Tokenizer
 
-`src/inspect_tokenizer.py` shows how a sentence is split into tokens and what each token looks like to the model — its vocabulary id and its token embedding vector (the input row the model reads). Byte-level tokens are shown in readable form (`Ġ` space prefixes become spaces).
+`src/inspect_tokenizer.py` shows how a sentence is split into tokens and what each token looks like to the model — its vocabulary id and embedding vector. Byte-level tokens are shown in readable form.
 
 ```bash
-# Tokenize a sentence (Traditional Chinese); print each token piece, its id, and its embedding vector
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "請告訴我國立台灣師範大學的具體位置在哪裡？"
+# Tokenize a sentence; print each token piece, id, and embedding vector
+python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Where is National Taiwan Normal University?"
 
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "國立台灣師範大學的具體位置在哪裡？"
-
-# Tokenize an English sentence
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Where is the National Taiwan Normal University?"
-
-# Look up a single token string -> its index (id) and vector
+# Look up a single token string or id
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "台"
-
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "臺"
-
-# Look up a single token id -> its token string and vector
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token_id 120573
 
 # Print the entire vector instead of the first 8 elements
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello" --vector_limit 0
 
-# Tokenization + ids only (fast; skips the model download/load)
+# Tokenization + ids only (skips model loading, so no vectors)
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --sentence "Hello world" --no_model
 ```
-
-For each token the output shows the token text, its vocabulary id, and its embedding vector (values plus shape, dtype, and norm/mean/std statistics). Use `--vector_limit 0` to print all elements of the vector.
 
 ---
 
@@ -907,32 +591,28 @@ For each token the output shows the token text, its vocabulary id, and its embed
 
 ### Custom LoRA Target Modules
 
-By default, LoRA is applied to all 7 linear projection layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`. You can restrict to attention-only modules to save memory:
+By default, LoRA is applied to all 7 linear projection layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`. You can restrict it to attention modules:
 
 ```bash
 python src/train.py \
-    --dataset_path ./data/train.jsonl \
-    --model_id Qwen/Qwen3.5-4B \
-    --target_modules q_proj,k_proj,v_proj,o_proj \
-    --output_dir ./attention-only-lora
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --model_id Qwen/Qwen3.5-4B \
+  --target_modules q_proj,k_proj,v_proj,o_proj \
+  --output_dir ./models/attention-only-lora
 ```
 
 ### Push to Hugging Face Hub
 
-To upload the trained adapter directly to the Hugging Face Hub, you must be logged in:
+Log in first, then pass `--push_to_hub True` and a destination repository:
 
 ```bash
 huggingface-cli login
-```
 
-Then add the `--push_to_hub` and `--hub_model_id` flags:
-
-```bash
 python src/train.py \
-    --dataset_path ./data/train.jsonl \
-    --output_dir ./my-adapter \
-    --push_to_hub True \
-    --hub_model_id your-username/qwen3-4b-finetuned
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --output_dir ./models/my-adapter \
+  --push_to_hub True \
+  --hub_model_id your-username/qwen3-4b-finetuned
 ```
 
 ### Full vs QLoRA
@@ -941,26 +621,24 @@ QLoRA (4-bit) is the NVIDIA default. Use unquantized LoRA with `--load_in_4bit F
 
 ```bash
 python src/train.py \
-    --dataset_path ./data/train.jsonl \
-    --load_in_4bit False \
-    --per_device_batch_size 1 \
-    --output_dir ./fplora-finetuned
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --load_in_4bit False \
+  --per_device_batch_size 1 \
+  --output_dir ./models/lora-finetuned
 ```
 
-This requires approximately 12 GB VRAM. Reduce `per_device_batch_size` or `max_seq_length` if you encounter out-of-memory errors.
+Unquantized 4B training needs considerably more memory than 4-bit training. Reduce `per_device_batch_size` or `max_seq_length` if you run out of memory.
 
 ### Enable Thinking Mode During Training
 
-If your dataset includes reasoning traces (content wrapped in `<think>...</think>`), you can enable the thinking-aware chat template:
+If your dataset includes reasoning traces wrapped in `<think>...</think>`, enable the thinking-aware chat template:
 
 ```bash
 python src/train.py \
-    --dataset_path ./data/reasoning_dataset.jsonl \
-    --use_thinking True \
-    --output_dir ./thinking-finetuned
+  --dataset_path ./data/reasoning_dataset.jsonl \
+  --use_thinking True \
+  --output_dir ./models/thinking-finetuned
 ```
-
-This ensures the tokenizer correctly handles the `<think>` tags during training.
 
 ---
 
@@ -969,38 +647,38 @@ This ensures the tokenizer correctly handles the `<think>` tags during training.
 After training, the `output_dir` contains:
 
 ```
-my-finetuned-model/
-├── adapter_config.json     # LoRA configuration (rank, alpha, target modules, etc.)
+my-adapter/
+├── adapter_config.json        # LoRA configuration (rank, alpha, target modules, etc.)
 ├── adapter_model.safetensors  # Trained LoRA adapter weights
-├── tokenizer_config.json   # Tokenizer configuration
-├── tokenizer.json          # Tokenizer vocabulary
-├── special_tokens_map.json # Special token definitions
-└── (checkpoint-XXX/)       # Intermediate training checkpoints (if save_steps was set)
+├── tokenizer_config.json      # Tokenizer configuration
+├── tokenizer.json             # Tokenizer vocabulary
+├── special_tokens_map.json    # Special token definitions
+└── checkpoint-*/              # Intermediate checkpoints (when save_steps is reached)
 ```
 
-The adapter is only ~40–80 MB, making it easy to share and version.
+Only the small adapter is saved; the base model is not copied into `output_dir`. A benchmark run (`--benchmark_steps > 0`) records metrics but does not export an adapter.
 
 ---
 
 ## Tips & Best Practices
 
-1. **Start small**: Run `bash scripts/train_preset.sh smoke-4b` (or `smoke-9b` for 9B) before a full training run. Alternatively use `--max_seq_length 2048` and `--num_epochs 1` manually.
+1. **Start small**: run the one-example smoke test in [Quick Start](#quick-start), or use `--max_seq_length 2048 --num_epochs 1` before a full run.
 
-2. **Effective batch size**: The effective batch size is `per_device_batch_size * gradient_accum_steps * num_gpus`. Aim for an effective batch size of 16–32. With 1 GPU, `--per_device_batch_size 2 --gradient_accum_steps 8` gives an effective batch size of 16.
+2. **Effective batch size**: `per_device_batch_size × gradient_accum_steps × num_gpus`. Aim for 16–32; with one GPU, `--per_device_batch_size 2 --gradient_accum_steps 8` gives 16.
 
-3. **Learning rate**: For LoRA/QLoRA, `2e-4` is a robust default. If your dataset is very small (< 500 examples), consider lowering it to `1e-4` to avoid overfitting.
+3. **Learning rate**: `2e-4` is a robust LoRA / QLoRA default. For fewer than 500 examples, try `1e-4`.
 
-4. **Monitor eval loss**: The trainer automatically tracks eval loss and saves the best checkpoint. Watch for divergence (eval loss going up) as a sign of overfitting or a learning rate that is too high.
+4. **Monitor eval loss**: with a positive `--test_split`, the trainer tracks eval loss and loads the best checkpoint at the end. Rising eval loss suggests overfitting or a learning rate that is too high.
 
-5. **Sequence length**: Examples are truncated/padded to `max_seq_length` via `SFTConfig.max_length`. Sequence packing is not enabled in the current trainer configuration.
+5. **Sequence length**: examples are truncated/padded via `SFTConfig.max_length`; sequence packing is not enabled.
 
-6. **Mixed precision** — The startup log shows the effective dtype used for weights and Trainer precision. When BF16 is unavailable, supported GPUs use FP16. CPU uses FP32. MPS training in mixed precision requires PyTorch 2.5 or later for FP16 and 2.6 or later for BF16.
+6. **Mixed precision**: the startup log shows the effective dtype. GPUs without BF16 use FP16, CPU uses FP32; for MPS training, FP16 needs PyTorch 2.5+ and BF16 needs 2.6+.
 
-7. **Data quality matters**: A clean dataset of 500–1000 high-quality examples often outperforms a noisy dataset of 10,000 examples for instruction tuning.
+7. **Data quality matters**: 500–1000 clean examples often beat 10,000 noisy ones for instruction tuning.
 
-8. **Match `model_id` at inference**: The base model used in `src/inference.py` (`--model_id`) must match the model you fine-tuned.
+8. **Match `model_id` at inference**: `--model_id` must match the base model used for training.
 
-9. **Interactive vs one-shot inference**: Use the default interactive loop for manual exploration. Add `--no_interactive` when you need a single batch run.
+9. **Interactive vs one-shot inference**: use the default loop for manual exploration; add `--no_interactive` together with `--prompt` for scripts and CI.
 
 ---
 
@@ -1008,19 +686,21 @@ The adapter is only ~40–80 MB, making it easy to share and version.
 
 | Problem | Likely Cause | Solution |
 |---|---|---|
-| Training uses CPU despite having a GPU | The active PyTorch wheel or driver cannot access the GPU | Follow the backend's [installation instructions](#install-and-verify-a-backend) in a fresh environment and pass its explicit `--device` |
-| `--device gpu` or an explicit GPU is unavailable | PyTorch could not use the requested accelerator | Verify the wheel and driver for the backend. Use `--device cpu` to run on CPU |
-| `OutOfMemoryError` | Batch size too large for your GPU | Reduce `--per_device_batch_size` or `--max_seq_length` |
+| Training uses CPU despite having a GPU | The active PyTorch wheel or driver cannot access the GPU | Follow the backend's [installation instructions](#install-and-verify-a-backend) in a fresh environment and pass an explicit `--device` |
+| `--device gpu` or an explicit GPU is unavailable | PyTorch could not use the requested accelerator | Verify the wheel and driver; use `--device cpu` to run on CPU |
+| `OutOfMemoryError` | Batch size or sequence length too large | Reduce `--per_device_batch_size` or `--max_seq_length` |
 | `KeyError: 'qwen3'` | Transformers version too old | Upgrade to `transformers>=5.12.1` |
-| NF4 fails on CUDA or ROCm | Missing bitsandbytes or incompatible GPU kernels | Match bitsandbytes with the GPU and CUDA or ROCm release. Use `--load_in_4bit False` for unquantized weights |
-| MPS operator is unsupported | PyTorch has no MPS implementation for the operator | Set `PYTORCH_ENABLE_MPS_FALLBACK=1` before launching Python so supported fallback operations can run on CPU |
-| Hub download / SSL errors | Broken `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` on conda/Windows | `src/train.py` and `src/inference.py` auto-fix at startup; or fix the env var manually |
-| Training loss is NaN | Learning rate too high or dtype issue | Lower `--learning_rate` (or `--lr`) or switch to `--torch_dtype bfloat16` |
+| NF4 fails on CUDA or ROCm | Missing bitsandbytes or incompatible GPU kernels | Match bitsandbytes with the GPU and CUDA/ROCm release; use `--load_in_4bit False` for unquantized weights |
+| 4-bit loading rejected on MPS or XPU | Those backends do not support NF4 here | Re-run with `--load_in_4bit False` |
+| MPS operator is unsupported | PyTorch has no MPS implementation for the operator | Set `PYTORCH_ENABLE_MPS_FALLBACK=1` before launching Python |
+| Hub download / SSL errors | Broken `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, or `CURL_CA_BUNDLE` | `src/train.py`, `src/inference.py`, and the inspection tools repair these paths at startup; or fix the environment variables manually |
+| Training loss is NaN | Learning rate too high or dtype issue | Lower `--learning_rate` (or `--lr`) or use `--torch_dtype bfloat16` |
 | Model repeats the same phrase | Overfitting or temperature too low | Increase `--temperature` or reduce `--num_epochs` |
-| `apply_chat_template` error | Data not in expected message format | Check that your dataset uses the correct format (see [Data Formats](#data-formats)) |
-| Local file loaded from Hub by mistake | `dataset_path` missing `./` prefix | Use `./data/train.jsonl` instead of `data/train.jsonl` for local files |
+| `apply_chat_template` error | Data not in the expected message format | Check your dataset against [Data Formats](#data-formats) |
+| Local file loaded from Hub by mistake | The path does not exist locally, so it was treated as a dataset name | Check the path; `./data/train.jsonl` makes a local file explicit |
+| `--no_interactive` fails with an argument error | No `--prompt` was supplied | Provide a non-empty `--prompt` with `--no_interactive` |
 | Eval loss increases during training | Overfitting | Reduce `--num_epochs`, increase `--test_split`, or add more training data |
-| `LoRA adapter not found` | Wrong `--adapter_path` | Point to the output dir or a `checkpoint-*` subfolder; inference auto-picks the latest checkpoint |
+| `LoRA adapter not found` | Wrong `--adapter_path` | Point to the output directory or a parent containing `checkpoint-*` directories; inference picks the latest checkpoint |
 
 ---
 
