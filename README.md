@@ -1,12 +1,14 @@
 # Fine-Tuning Playground
 
 A teaching-oriented codebase for supervised fine-tuning (SFT) of **Qwen3 / Qwen3.5**
-decoder-only models (for example **Qwen3-4B** and **Qwen3.5-4B**) with **LoRA / QLoRA**.
-It is built on Hugging Face `transformers`, `peft`, `trl`, and `bitsandbytes`.
+models with **LoRA / QLoRA**. It is built on Hugging Face `transformers`, `peft`, `trl`,
+and `bitsandbytes`.
 
-The whole training pipeline lives in one top-to-bottom script, [`src/train.py`](src/train.py).
-Every setting is a CLI flag. There is no config file to learn and no framework to
-subclass: you can read the file from line 1 to the end and see exactly what happens.
+This README is a single path from "I have never installed Python" to "I trained an adapter,
+ran inference, and understand what happened". Every command below is copy-pasteable and
+matches the code in this repository. The whole training pipeline lives in one top-to-bottom
+script, [`src/train.py`](src/train.py); every setting is a CLI flag, with no config file to
+learn and no framework to subclass.
 
 **Language:** [English](README.md) · [繁體中文](README.zh-Hant.md)
 
@@ -20,21 +22,29 @@ subclass: you can read the file from line 1 to the end and see exactly what happ
   - [From a sentence to the next word](#from-a-sentence-to-the-next-word)
   - [What the chat template is doing](#what-the-chat-template-is-doing)
   - [What SFT teaches, and what the loss hides](#what-sft-teaches-and-what-the-loss-hides)
-  - [The training pipeline, step by step](#the-training-pipeline-step-by-step)
   - [Why LoRA and QLoRA fit on a consumer GPU](#why-lora-and-qlora-fit-on-a-consumer-gpu)
   - [Epochs, batches, learning rate, and friends](#epochs-batches-learning-rate-and-friends)
   - [What happens at inference time](#what-happens-at-inference-time)
   - [How the NTNU evaluation works](#how-the-ntnu-evaluation-works)
   - [Choosing a compute backend](#choosing-a-compute-backend)
+  - [Why Conda, PyTorch, and a GPU backend](#why-conda-pytorch-and-a-gpu-backend)
+- [Zero-to-Run Walkthrough](#zero-to-run-walkthrough)
+  - [Step 0 — Read This First: Hardware and Vocabulary](#step-0--read-this-first-hardware-and-vocabulary)
+  - [Step 1 — Install Conda from Scratch](#step-1--install-conda-from-scratch)
+  - [Step 2 — Understand CUDA, ROCm, MPS, XPU, and CPU](#step-2--understand-cuda-rocm-mps-xpu-and-cpu)
+  - [Step 3 — Create the `ai` Conda Environment](#step-3--create-the-ai-conda-environment)
+  - [Step 4 — Install Dependencies and Verify PyTorch](#step-4--install-dependencies-and-verify-pytorch)
+  - [Step 5 — Choose a Model (and Why)](#step-5--choose-a-model-and-why)
+  - [Step 6 — Build an SFT Dataset with ChatGPT](#step-6--build-an-sft-dataset-with-chatgpt)
+  - [Step 7 — Train with `src/train.py`](#step-7--train-with-srctrainpy)
+  - [Step 8 — Inference and Evaluation](#step-8--inference-and-evaluation)
+- [Installation](#installation)
+  - [Install Miniconda from Scratch](#install-miniconda-from-scratch)
+  - [Create the `ai` Environment](#create-the-ai-environment)
+  - [Install and Verify a Backend](#install-and-verify-a-backend)
+- [Model Catalog: Qwen3.5 and Qwen3](#model-catalog-qwen35-and-qwen3)
 - [Features](#features)
 - [Hardware Requirements](#hardware-requirements)
-- [Installation](#installation)
-  - [Option 1 — Miniconda (Recommended)](#option-1--miniconda-recommended)
-  - [Option 2 — venv](#option-2--venv)
-  - [Install and verify a backend](#install-and-verify-a-backend)
-- [Quick Start](#quick-start)
-  - [Cross-platform smoke test](#cross-platform-smoke-test)
-  - [NVIDIA 4B preset](#nvidia-4b-preset)
 - [Project Structure](#project-structure)
   - [File Descriptions](#file-descriptions)
 - [Configuration](#configuration)
@@ -43,14 +53,6 @@ subclass: you can read the file from line 1 to the end and see exactly what happ
   - [Model inspection (`src/inspect_model.py`)](#model-inspection-srcinspect_modelpy)
   - [Tokenizer inspection (`src/inspect_tokenizer.py`)](#tokenizer-inspection-srcinspect_tokenizerpy)
   - [NTNU evaluation (`src/evaluate_ntnu.py`)](#ntnu-evaluation-srcevaluate_ntnupy)
-- [Recommended Training Presets](#recommended-training-presets)
-  - [Platform & OS](#platform--os)
-  - [VRAM and Model Size (QLoRA)](#vram-and-model-size-qlora)
-  - [Dataset Size Guidelines](#dataset-size-guidelines)
-  - [Named Presets](#named-presets)
-  - [Preset Scripts](#preset-scripts)
-  - [Native Windows NTNU Benchmark](#native-windows-ntnu-benchmark)
-  - [Manual Commands by Preset](#manual-commands-by-preset)
 - [Data Formats](#data-formats)
   - [ChatML Format](#chatml-format)
   - [Alpaca Format](#alpaca-format)
@@ -70,6 +72,7 @@ subclass: you can read the file from line 1 to the end and see exactly what happ
   - [Full-Precision LoRA vs QLoRA](#full-precision-lora-vs-qlora)
   - [Enable Thinking Mode During Training](#enable-thinking-mode-during-training)
   - [Measure Speed and Memory](#measure-speed-and-memory)
+- [Reproducibility: Windows NTNU Benchmark](#reproducibility-windows-ntnu-benchmark)
 - [Output Artifacts](#output-artifacts)
 - [Tips & Best Practices](#tips--best-practices)
 - [Troubleshooting](#troubleshooting)
@@ -79,9 +82,12 @@ subclass: you can read the file from line 1 to the end and see exactly what happ
 
 ## Overview
 
-**Qwen3** and **Qwen3.5** are dense language models from Alibaba's Qwen team. The 4B
-variants support long context, grouped-query attention, and an optional chain-of-thought
-**thinking mode** through `<think>` tags in the chat template.
+Qwen3 and Qwen3.5 are model families from Alibaba's Qwen team. According to their official
+model cards, Qwen3.5 models use a hybrid architecture that combines Gated Delta Networks
+with **sparse Mixture-of-Experts** and a vision encoder; they are not simply dense
+text-only models. Qwen3-4B-Instruct-2507 is a causal language model with GQA attention and
+supports non-thinking mode only. See the [Model Catalog](#model-catalog-qwen35-and-qwen3)
+for exact, sourced specs.
 
 This repository gives you one complete, readable path from "I have a JSONL file" to
 "I have an adapter that changes how the model answers":
@@ -113,7 +119,7 @@ Core choices made by the code:
 ## Start Here: How Fine-Tuning Actually Works
 
 This section assumes no machine-learning background. Later sections are the reference
-manual; this section is the explanation of *why* the commands look the way they do.
+manual; this section explains *why* the commands look the way they do.
 
 ### The 30-second mental model
 
@@ -181,6 +187,15 @@ You are a helpful assistant.<|im_end|>
 國立臺灣師範大學位於臺北市大安區和平東路一段 162 號。<|im_end|>
 ```
 
+```mermaid
+flowchart LR
+    A["user message"] --> B["apply_chat_template"]
+    C["assistant message"] --> B
+    B --> D["im_start user ... im_end"]
+    D --> E["im_start assistant ... im_end"]
+    E --> F["Token IDs the model trains on"]
+```
+
 During training, `train.py` calls `tokenizer.apply_chat_template(..., tokenize=False,
 add_generation_prompt=False)` and stores the resulting string in a `text` column. The
 model therefore learns the delimiters, not just the words. During inference,
@@ -213,55 +228,6 @@ system/user parts, so the loss comes only from assistant turns and their end-of-
 token. The script validates every row and refuses truncated assistant targets. This flag
 requires `--dataset_format chat`.
 
-### The training pipeline, step by step
-
-Read [`src/train.py`](src/train.py) alongside this diagram; the message order matches the
-`main()` function.
-
-```mermaid
-sequenceDiagram
-    participant You
-    participant T as train.py
-    participant D as device_utils
-    participant M as model_utils
-    participant P as PEFT
-    participant Data as Dataset / SFTTrainer
-    participant Disk
-
-    You->>T: python src/train.py --dataset_path ...
-    T->>T: parse_args(), set_seed(), fix SSL certs
-    T->>D: resolve_device(training=True)
-    D-->>T: backend, torch device, dtype, NF4 flag
-    T->>M: load_tokenizer(), load_base_model()
-    M-->>T: frozen base model on the chosen device
-    T->>P: get_peft_model(LoraConfig(...))
-    P-->>T: base frozen, LoRA matrices trainable
-    T->>Data: load JSON / JSONL / directory / Hub
-    T->>Data: apply template, train/test split
-    T->>Data: SFTConfig + SFTTrainer
-    loop Every optimizer step
-        Data->>Data: forward pass on a micro-batch
-        Data->>Data: loss against labels
-        Data->>P: backward pass (LoRA gradients)
-        Data->>P: optimizer.step()
-    end
-    opt Every eval_steps / epoch
-        Data->>Data: evaluation loss, keep best checkpoint
-    end
-    Data-->>T: training metrics and best checkpoint
-    T->>Disk: save_model() and tokenizer.save_pretrained()
-```
-
-Details worth knowing:
-
-- The dataset is loaded **after** the model and adapter are ready.
-- `--benchmark_steps N>0` stops after `warmup + N` optimizer steps, prints timing and
-  throughput, and deliberately writes **no adapter**.
-- With a positive eval split, `load_best_model_at_end=True` reloads the lowest-eval-loss
-  checkpoint before exporting, so the final directory contains the best model rather than
-  necessarily the last one.
-- `save_total_limit=2` keeps only the two most recent checkpoints on disk.
-
 ### Why LoRA and QLoRA fit on a consumer GPU
 
 A 4B model in BF16 is roughly 8 GB of weights before you add activations, gradients, and
@@ -291,7 +257,8 @@ flowchart LR
 
 - `r` (`--lora_r`) is the rank, i.e. the width of the little bottleneck. Larger `r` can
   represent more complex changes but uses more memory.
-- `alpha` (`--lora_alpha`) scales the LoRA update. The presets use `alpha = 2 * r`.
+- `alpha` (`--lora_alpha`) scales the LoRA update. The commands in this README use
+  `alpha = 2 * r`.
 - `target_modules` selects *where* the adapters go. The default covers attention and
   feed-forward projections. Attention-only (`q_proj,k_proj,v_proj,o_proj`) is the first
   thing to try when memory is tight.
@@ -316,12 +283,29 @@ flowchart LR
 | Seed | Makes splitting and initialization repeatable | `seed` |
 | Eval split | Examples hidden from training and used to pick the best checkpoint | `test_split` |
 
-Worked example with the bundled NTNU data and `gpu-12gb-4b`:
+```mermaid
+sequenceDiagram
+    participant Data as Dataset
+    participant T as SFTTrainer
+    participant Opt as Optimizer
+    Data->>T: 1,252 records, 5% held out
+    Note over Data: ~1,189 training examples
+    loop Each micro-batch
+        Data->>T: 2 examples (per_device_batch_size 2)
+        T->>T: forward + loss
+    end
+    Note over T: 8 micro-batches accumulated
+    T->>Opt: one optimizer.step() (effective batch 16)
+    Opt-->>T: weights updated
+    Note over T: ~75 steps per epoch × 3 epochs ≈ 225 steps
+```
+
+Worked example with the bundled NTNU data and the 12 GB / 4B settings below:
 
 - 1,252 records, 5% held out → about 1,189 training examples.
 - `per_device_batch_size 2 × gradient_accum_steps 8` → effective batch 16.
 - About 75 optimizer steps per epoch; three epochs → about **225 steps**, which is why
-  you will see a `checkpoint-225/` in the shipped example output directories.
+  you will see `checkpoint-225/` in shipped example output directories.
 - `--save_steps 200` therefore writes intermediate checkpoints during the run.
 
 > **Implementation note:** `--warmup_ratio` is passed to `SFTConfig` as the numeric
@@ -383,15 +367,7 @@ implements a small offline, human-graded benchmark for that purpose.
 Keep these prompts out of training. Reusing them would turn a held-out test into a
 memorization check.
 
-```mermaid
-flowchart LR
-    A["generate<br/>one JSON per candidate model"] --> B["blind<br/>NAME=PATH for each response file"]
-    B --> C["Human review<br/>pass / major / note per answer"]
-    C --> D["score<br/>quality gates per candidate"]
-    D --> E{"Pass quality and reduce runtime by 25%?"}
-    E -- "Yes" --> F["Adopt candidate"]
-    E -- "No" --> G["Keep baseline"]
-```
+The flow is `generate` → `blind` → human review → `score`; Step 8 shows it as a diagram.
 
 - `generate` uses greedy decoding (`do_sample=False`), batching, and resumable output:
   a matching output file continues from the answers already present. It requires a LoRA
@@ -432,6 +408,668 @@ flowchart TD
   unquantized `float32`.
 - ROCm NF4 is opt-in and runs a small forward/backward preflight before loading the
   large model. A failure gives an actionable fallback: `--load_in_4bit False`.
+- The installer has **no ROCm wheel index**: for AMD GPUs you must install the correct
+  PyTorch wheel from AMD first, then run `--backend rocm` to install the remaining
+  dependencies and verify the device.
+
+### Why Conda, PyTorch, and a GPU backend
+
+Three layers are easy to confuse:
+
+| Layer | What it is | Why this project needs it |
+|---|---|---|
+| Conda environment | An isolated folder containing one Python interpreter and its packages | Prevents a system Python or another project from breaking this one; lets CUDA and ROCm machines keep separate wheels |
+| PyTorch wheel | The compiled `torch` package built for a specific accelerator (cu128, ROCm/HIP, XPU, MPS, or CPU) | Without the matching wheel, `torch.cuda.is_available()` is false even when a GPU is physically present |
+| CUDA / ROCm / Metal | The vendor runtime that lets PyTorch launch GPU kernels | It is the bridge between Python code and the GPU; a driver alone is not enough |
+
+This is why the walkthrough creates an environment named `ai` **before** installing
+anything, and passes an explicit `--backend` to the installer.
+
+---
+
+## Zero-to-Run Walkthrough
+
+Follow these steps in order. Each step explains the idea first, then gives commands you
+can paste.
+
+### Step 0 — Read This First: Hardware and Vocabulary
+
+You do not need a GPU to read this project, but you need one for a useful training run.
+The minimum practical setup is:
+
+- **8 GB VRAM** for QLoRA with a 4B model at short sequence length.
+- **12 GB VRAM** for the comfortable 4B command used in Step 7.
+- **Apple Silicon** with unified memory can use MPS; start with `Qwen/Qwen3.5-0.8B`.
+- **CPU only** is supported for smoke tests. It will be slow and is not for real training.
+
+Key vocabulary used throughout Step 1 onward:
+
+- **SFT** — supervised fine-tuning: show the model question/answer pairs and let it copy
+  the style and behaviour.
+- **LoRA** — train small add-on matrices instead of the whole model.
+- **QLoRA** — keep the base model in 4-bit NF4 while training those small matrices.
+- **Adapter** — the small file produced by training; it is useless without the same base
+  model ID.
+- **Backend** — the runtime used for tensor math: CUDA, ROCm, MPS, XPU, or CPU.
+- **Environment** — the isolated Python installation where those packages live.
+
+### Step 1 — Install Conda from Scratch
+
+Conda creates isolated Python environments. Do **not** install these packages into your
+system Python: PyTorch wheels, CUDA builds, and Transformers versions from other projects
+can conflict. Miniconda is enough; Anaconda is not required.
+
+**Windows**
+
+1. Download `Miniconda3-latest-Windows-x86_64.exe` from
+   https://docs.conda.io/en/latest/miniconda.html.
+2. Run the installer. Either check "Add Miniconda3 to PATH" or use "Anaconda Prompt"
+   from the Start menu.
+3. Open a new terminal and verify:
+
+```powershell
+conda --version
+```
+
+**Linux / macOS**
+
+```bash
+# Linux x86_64
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -b -p "$HOME/miniconda3"
+"$HOME/miniconda3/bin/conda" init bash
+exec bash
+
+# macOS Apple Silicon (arm64)
+curl -L -o ~/miniconda3.sh \
+  https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
+bash ~/miniconda3.sh -b -p "$HOME/miniconda3"
+"$HOME/miniconda3/bin/conda" init zsh
+exec zsh
+```
+
+`conda init` adds Conda to your shell startup file so `conda activate` works in new
+terminals. Verify with:
+
+```bash
+conda --version
+```
+
+### Step 2 — Understand CUDA, ROCm, MPS, XPU, and CPU
+
+These are **backends**, not alternatives to Python:
+
+| Backend | What it is | Why you would choose it | Important constraint |
+|---|---|---|---|
+| **CUDA** | NVIDIA's parallel computing platform and runtime | Most complete PyTorch support; NF4/bitsandbytes works out of the box | Needs an NVIDIA driver and the matching cu128 PyTorch wheel |
+| **ROCm** | AMD's open-source GPU computing stack (HIP is its CUDA-like API) | Use AMD GPUs | The wheel must match the ROCm version, GPU model, and OS. This installer does **not** fetch it for you |
+| **MPS** | Apple Metal Performance Shaders | Apple Silicon Macs | Requires native arm64 Python; 4-bit loading is not supported |
+| **XPU** | Intel GPU support in PyTorch | Intel Arc / Data Center GPUs | Needs the Intel driver and XPU wheel; 4-bit loading is not supported |
+| **CPU** | Plain processor execution | Smoke tests and debugging | Very slow for 4B+ models; 4-bit is disabled and `float32` is used |
+
+Check what your machine actually has:
+
+```bash
+# NVIDIA only
+nvidia-smi
+
+# Inside the conda environment, after installing PyTorch
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.version.hip)"
+```
+
+A driver is not the same as a PyTorch wheel. `nvidia-smi` can show a working GPU while
+`torch.cuda.is_available()` is `False` if PyTorch was installed from the wrong index.
+One environment holds one PyTorch wheel, so keep CUDA and ROCm environments separate.
+
+### Step 3 — Create the `ai` Conda Environment
+
+```bash
+conda create -n ai python=3.11 -y
+conda activate ai
+python --version
+```
+
+Python 3.11 is a safe choice for current PyTorch, Transformers, TRL, and PEFT releases.
+Every new terminal starts in the `base` environment, so run `conda activate ai` again
+each time. If you previously used an environment named `finetune`, either rename it with
+`conda rename -n finetune ai` (if your conda supports it) or simply create `ai` and
+activate that instead.
+
+### Step 4 — Install Dependencies and Verify PyTorch
+
+`scripts/install_deps.py` does four things:
+
+1. Selects a PyTorch wheel index from `--backend` (CUDA → cu128, XPU → xpu, CPU → cpu;
+   MPS and macOS CPU use PyPI; ROCm installs no wheel and expects AMD's wheel already
+   present).
+2. Runs a real tensor operation on the chosen device and reads back the exact installed
+   torch version.
+3. Installs `requirements.txt` for CUDA or `requirements-common.txt` for every other
+   backend, then re-pins `torch==<verified version>` so pip cannot silently replace the
+   vendor wheel.
+4. Adds `bitsandbytes>=0.50.0` only for `--rocm-4bit`.
+
+`-c requirements-common.txt` during the wheel install is a **constraint** (it limits
+`torch>=2.4.0,<2.12`), not an instruction to install every package twice.
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Installer as install_deps.py
+    participant Pip
+    participant Torch as PyTorch device
+    You->>Installer: --backend cuda / rocm / mps / xpu / cpu
+    Installer->>Pip: install torch from backend index (except ROCm)
+    Pip-->>Installer: torch installed
+    Installer->>Torch: run ones(1, device) + 1 == 2
+    Torch-->>Installer: verified + exact version
+    Installer->>Pip: install requirements and pin torch==exact version
+    Installer->>Pip: optional bitsandbytes for ROCm 4-bit
+    Installer-->>You: Verified PyTorch ... on ...
+```
+
+Paste the command for your platform:
+
+```bash
+# NVIDIA CUDA (Linux / Windows Git Bash)
+python scripts/install_deps.py --backend cuda
+
+# AMD ROCm: install the AMD PyTorch wheel FIRST, then:
+python scripts/install_deps.py --backend rocm
+python scripts/install_deps.py --backend rocm --rocm-4bit   # optional NF4 support
+
+# Apple Silicon (native arm64 Python)
+bash scripts/install_deps.sh --backend mps
+
+# Intel XPU
+python scripts/install_deps.py --backend xpu
+
+# CPU only
+python scripts/install_deps.py --backend cpu
+
+# Windows PowerShell
+powershell -File scripts/install_deps.ps1 -Backend cuda
+powershell -File scripts/install_deps.ps1 -Backend rocm -Rocm4Bit
+```
+
+> **ROCm warning:** `install_deps.py` intentionally skips the wheel download for ROCm
+> because AMD wheels are GPU/OS/ROCm-specific. If you run `--backend rocm` before
+> installing the correct wheel, verification fails. Follow AMD's official ROCm PyTorch
+> installation guide for your exact configuration first.
+
+Verify the installation:
+
+```bash
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+python src/inspect_model.py --model_id Qwen/Qwen3.5-0.8B --device cpu --no_load
+python -m unittest discover -s tests -v
+```
+
+The last command runs nine backend-selection tests and should end with `OK`.
+
+### Step 5 — Choose a Model (and Why)
+
+The **model ID** is a Hugging Face repository name. It must be identical during training
+and inference because the tokenizer, chat template, and vocabulary belong to that model.
+The default in the code is `Qwen/Qwen3.5-0.8B` so smoke tests stay small; real GPU work
+usually uses `Qwen/Qwen3.5-4B`.
+
+| If you have | Start with | Why |
+|---|---|---|
+| CPU only | `Qwen/Qwen3.5-0.8B`, `--device cpu`, `--load_in_4bit False` | Small enough to finish a smoke run |
+| 8 GB NVIDIA VRAM | `Qwen/Qwen3.5-4B`, NF4, short sequence | 4-bit base weights fit |
+| 12–16 GB NVIDIA VRAM | `Qwen/Qwen3.5-4B`, NF4, batch 2 | Best quality / memory balance |
+| 12 GB+ and want more capacity | `Qwen/Qwen3.5-9B`, NF4, batch 1 | Needs careful sequence length |
+| Apple Silicon | `Qwen/Qwen3.5-0.8B` or `2B`, MPS, unquantized | MPS rejects 4-bit loading |
+
+Full specs and official links are in the [Model Catalog](#model-catalog-qwen35-and-qwen3).
+
+### Step 6 — Build an SFT Dataset with ChatGPT
+
+SFT needs **paired examples**: a realistic user question and the ideal assistant answer.
+The native format here is ChatML, one JSON object per line:
+
+```json
+{"messages":[{"role":"user","content":"問題"},{"role":"assistant","content":"回答"}]}
+```
+
+You can generate a first draft with ChatGPT or another LLM, but you must verify it.
+Language models can produce fluent, plausible fabrications; if you train on a fabricated
+address or deadline, the adapter learns it as fact.
+
+#### Prompt 1: Generate Chinese Q&A Pairs
+
+Paste this into ChatGPT, replacing the topic in the last line:
+
+```text
+你是一位資料標註員，正在為「監督式微調（SFT）」製作訓練資料。
+請針對下面指定主題，產生 20 筆繁體中文問答對。
+
+硬性規則：
+1. 問題要像真實使用者會問的話；答案要簡潔、完整、可查證。
+2. 絕對不要捏造地址、電話、期限、金額、人名、法規或制度。不確定就跳過該筆，不要猜。
+3. 只輸出純 JSONL：每一行一個 JSON 物件，不要輸出任何說明文字，不要加 markdown 程式碼區塊。
+4. 每行格式固定為：
+{"messages":[{"role":"user","content":"問題"},{"role":"assistant","content":"回答"}]}
+5. messages 陣列必須恰好 2 個元素，role 依序為 user、assistant，content 皆為非空白字串。
+6. 20 筆的主題要彼此不重複。
+
+主題：〈在這裡填入主題，例如：國立臺灣師範大學的入學申請流程〉
+```
+
+#### Prompt 2: Validate and Debug JSONL
+
+Paste this after the model returns a draft:
+
+```text
+你是 JSONL 驗證器。我會貼上一段 JSONL，請逐行檢查，
+只輸出一個 JSON 陣列，元素格式：{"line":<行號>,"ok":true/false,"reason":"..."}
+不要修改我的內容，只回報問題。
+
+檢查規則：
+1. 每行必須是合法 JSON 物件。
+2. 必須有 messages 欄位，且為陣列、長度恰好 2。
+3. messages[0].role == "user"，messages[1].role == "assistant"。
+4. 兩個 content 都是非空白字串。
+5. 若某行有額外欄位（例如 source），標記 ok=true 但於 reason 註明「額外欄位會被訓練器忽略」。
+
+以下是待檢查的 JSONL：
+〈貼上 JSONL〉
+```
+
+```mermaid
+flowchart LR
+    A["Pick a narrow topic"] --> B["Prompt 1: generate Q and A pairs"]
+    B --> C["Remove markdown fences"]
+    C --> D["Prompt 2: validate structure"]
+    D --> E["Human fact-check against official sources"]
+    E --> F["data/my_dataset.jsonl"]
+    F --> G["src/train.py --dataset_format chat"]
+```
+
+#### Save and Verify the JSONL
+
+1. Paste the cleaned output into `data/my_dataset.jsonl`. If ChatGPT wrapped it in a
+   JSON code fence, remove the first and last lines.
+2. Validate locally, not only in the chat:
+
+```bash
+python - <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path('data/my_dataset.jsonl')
+bad = []
+for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+    if not line.strip():
+        continue
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError as exc:
+        bad.append((line_no, f'JSON error: {exc}'))
+        continue
+    messages = record.get('messages')
+    if not isinstance(messages, list) or len(messages) != 2:
+        bad.append((line_no, 'messages must be a list of length 2'))
+        continue
+    if [m.get('role') for m in messages] != ['user', 'assistant']:
+        bad.append((line_no, 'roles must be user then assistant'))
+        continue
+    if any(not isinstance(m.get('content'), str) or not m['content'].strip() for m in messages):
+        bad.append((line_no, 'content must be a non-empty string'))
+
+if bad:
+    for item in bad[:20]:
+        print(item)
+    sys.exit(1)
+print(f'OK: {path}')
+PY
+```
+
+3. Run the same validator on the bundled file to see a known-good example:
+   `data/ntnu_dataset.jsonl` has 1,252 valid records.
+
+#### Hallucination and Fact-Checking
+
+**Format correctness is not factual correctness.** The prompt reduces invented details
+but cannot eliminate them. Before training:
+
+- Manually check every address, phone number, deadline, amount, name, rule, and law
+  against an official website.
+- Keep source URLs in a separate file such as `data/my_dataset.sources.json`; the trainer
+  ignores extra keys, but the file gives you an audit trail.
+- Prefer narrow, verifiable topics. "Admission FAQ for one university" is safer than
+  "everything about Taiwan".
+- Keep `evaluation/ntnu_qa.jsonl` out of training. Those 60 questions are held out for
+  evaluation.
+
+For factual work, add `--assistant_only_loss` with ChatML data so the model is not
+trained to reproduce the question text as if it were an answer.
+
+Dataset size guidance:
+
+| Examples | Suggested approach | Flags to change |
+|---|---|---|
+| < 500 | Short smoke run, check for overfitting | `--num_epochs 1`, `--learning_rate 1e-4` |
+| 500–5,000 | Normal LoRA run | defaults are reasonable |
+| 5,000–30,000 | Longer run, fewer epochs | `--num_epochs 2`, `--learning_rate 1.5e-4` |
+| 30,000+ | More capacity and checkpointing | `--lora_r 32`, `--lora_alpha 64`, `--save_steps 300` |
+
+### Step 7 — Train with `src/train.py`
+
+The script path is `src/train.py`; there is no `train.py` at the repository root.
+`--load_in_4bit` accepts exactly `True` or `False`. `--device` accepts
+`auto|gpu|cuda|rocm|mps|xpu|cpu`.
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant T as src/train.py
+    participant D as device_utils
+    participant M as model_utils
+    participant P as PEFT
+    participant Data as Dataset / SFTTrainer
+    participant Disk
+
+    You->>T: python src/train.py --dataset_path ...
+    T->>T: parse_args(), set_seed(), fix SSL certs
+    T->>D: resolve_device(training=True)
+    D-->>T: backend, torch device, dtype, NF4 flag
+    T->>M: load_tokenizer(), load_base_model()
+    M-->>T: frozen base model on the chosen device
+    T->>P: get_peft_model(LoraConfig(...))
+    P-->>T: base frozen, LoRA matrices trainable
+    T->>Data: load JSON / JSONL / directory / Hub
+    T->>Data: apply template, train/test split
+    T->>Data: SFTConfig + SFTTrainer
+    loop Every optimizer step
+        Data->>Data: forward pass on a micro-batch
+        Data->>P: backward pass (LoRA gradients)
+        Data->>P: optimizer.step()
+    end
+    Data-->>T: training metrics and best checkpoint
+    T->>Disk: save adapter and tokenizer
+```
+
+#### Copy-Paste Commands by VRAM
+
+**12 GB NVIDIA, 4B model** — the recommended first real run:
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
+  --max_seq_length 2048 --num_epochs 3 \
+  --per_device_batch_size 2 --gradient_accum_steps 8 \
+  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
+  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 200 \
+  --output_dir ./models/ntnu/gpu-12gb-4b
+```
+
+**4B single-epoch smoke test** — verifies the pipeline before a long run:
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
+  --max_seq_length 2048 --num_epochs 1 \
+  --per_device_batch_size 1 --gradient_accum_steps 8 \
+  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
+  --test_split 0.05 --logging_steps 10 --save_steps 200 \
+  --output_dir ./models/ntnu/smoke-4b
+```
+
+**CPU smoke test** — works without a GPU:
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-0.8B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device cpu --load_in_4bit False --torch_dtype float32 \
+  --max_seq_length 512 --num_epochs 1 \
+  --per_device_batch_size 1 --gradient_accum_steps 4 \
+  --learning_rate 2e-4 --lora_r 8 --lora_alpha 16 --lora_dropout 0.05 \
+  --test_split 0.05 --logging_steps 5 --save_steps 50 \
+  --output_dir ./models/ntnu/cpu-smoke
+```
+
+Other VRAM situations use the same flags as the 12 GB / 4B command with these changes:
+
+| Situation | `--model_id` | `--max_seq_length` | batch | accum | `lora_r/alpha` | `--save_steps` | `--output_dir` |
+|---|---|---|---|---|---|---|---|
+| 8 GB NVIDIA | `Qwen/Qwen3.5-4B` | 2048 | 1 | 16 | 16/32 | 200 | `./models/ntnu/gpu-8gb-4b` |
+| 12 GB NVIDIA, 9B | `Qwen/Qwen3.5-9B` | 1536 | 1 | 16 | 16/32 | 250 | `./models/ntnu/gpu-12gb-9b` |
+| 12 GB NVIDIA, 9B longer | `Qwen/Qwen3.5-9B` | 2048 | 1 | 16 | 16/32, plus `--target_modules q_proj,k_proj,v_proj,o_proj` | 250 | `./models/ntnu/gpu-12gb-9b-long` |
+| 16 GB NVIDIA, 9B | `Qwen/Qwen3.5-9B` | 2048 | 1 | 16 | 32/64 | 300 | `./models/ntnu/gpu-16gb-9b` |
+| 24 GB NVIDIA, 4B | `Qwen/Qwen3.5-4B` | 4096 | 2 | 8 | 32/64 | 300 | `./models/ntnu/gpu-24gb-4b` |
+| 24 GB NVIDIA, 9B | `Qwen/Qwen3.5-9B` | 2048 | 2 | 8 | 32/64 | 300 | `./models/ntnu/gpu-24gb-9b` |
+| 9B smoke test | `Qwen/Qwen3.5-9B` | 1536 | 1 | 8 | 16/32, `--num_epochs 1` | 200 | `./models/ntnu/smoke-9b` |
+
+#### Hyperparameters Explained
+
+- `--max_seq_length` is the first thing to reduce on OOM. Longer text means more attention
+  memory and more truncated examples.
+- `--per_device_batch_size × --gradient_accum_steps × GPU count` is the effective batch.
+  Aim for 16–32. Two GPUs are not required; one GPU with `2 × 8 = 16` is fine.
+- `--learning_rate 2e-4` is a robust LoRA default. Smaller datasets prefer `1e-4`.
+- `--num_epochs 3` is a starting point. Watch validation loss; rising eval loss means
+  overfitting or too high a learning rate.
+- `--test_split 0.05` hides five percent of the data and restores the best checkpoint at
+  the end. Set it to `0` only for a pure throughput benchmark.
+- `--assistant_only_loss` requires `--dataset_format chat` and supervises only assistant
+  turns.
+- `--gradient_checkpointing` is on by default and trades speed for lower peak memory.
+- `--run_metrics path.json` records timings, model revision, package versions, dataset
+  hash, and token statistics.
+
+On Windows, if CUDA allocation is fragmented:
+
+```powershell
+$env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
+```
+
+If you still hit OOM, reduce `--max_seq_length` first, then restrict
+`--target_modules q_proj,k_proj,v_proj,o_proj`, then lower the micro-batch while raising
+`--gradient_accum_steps` to keep the effective batch unchanged.
+
+#### Migration: Removed Shortcuts → Direct Commands
+
+The named shortcut scripts were removed. Use the direct commands above. This table maps
+every old shortcut to its replacement; only the first three full commands are printed in
+this README, and the rest follow the "Other VRAM situations" table.
+
+| Removed shortcut | Replacement | Main difference |
+|---|---|---|
+| `smoke-4b` | 4B single-epoch smoke command | Same flags, one epoch |
+| `smoke-9b` | 9B row in the VRAM table, `--num_epochs 1` | 1536 tokens, batch 1 |
+| `cpu-smoke` | CPU smoke command | 0.8B, float32, no 4-bit |
+| `gpu-8gb-4b` | 8 GB row | batch 1, accumulation 16 |
+| `gpu-12gb-4b` | 12 GB / 4B command | Full three-epoch run |
+| `gpu-12gb-9b` | 12 GB / 9B row | 1536 tokens |
+| `gpu-12gb-9b-long` | 12 GB / 9B longer row | attention-only LoRA |
+| `gpu-16gb-9b` | 16 GB / 9B row | rank 32 |
+| `gpu-24gb-4b` | 24 GB / 4B row | 4096 tokens, rank 32 |
+| `gpu-24gb-9b` | 24 GB / 9B row | batch 2, rank 32 |
+| `ntnu-win-baseline` | See [Reproducibility](#reproducibility-windows-ntnu-benchmark) | 4B NF4, batch 2, 3 epochs, 2048 tokens |
+| `ntnu-win-qwen35-4b` | See [Reproducibility](#reproducibility-windows-ntnu-benchmark) | 4B NF4, batch 4, 2 epochs, 512 tokens |
+| `ntnu-win-qwen3-4b` | See [Reproducibility](#reproducibility-windows-ntnu-benchmark) | Qwen3-4B-Instruct-2507, batch 4 |
+| `ntnu-win-qwen35-2b` | See [Reproducibility](#reproducibility-windows-ntnu-benchmark) | 2B unquantized, batch 8 |
+
+If you used an environment named `finetune`, run `conda activate ai` from now on.
+
+### Step 8 — Inference and Evaluation
+
+```mermaid
+flowchart LR
+    A["Train adapter"] --> B["src/inference.py base"]
+    A --> C["src/inference.py finetuned"]
+    B --> D["Compare answers side by side"]
+    C --> D
+    A --> E["evaluate_ntnu.py generate"]
+    E --> F["blind: shuffle + separate key"]
+    F --> G["Human review"]
+    G --> H["score: quality gates"]
+```
+
+One-shot inference requires a non-empty `--prompt` when `--no_interactive` is used;
+there is no built-in test prompt.
+
+```bash
+# Base model before training
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
+
+# Fine-tuned adapter
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
+
+# Side-by-side comparison
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --load_in_4bit True \
+  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
+```
+
+Without `--no_interactive`, the script opens an interactive loop after answering the
+optional `--prompt`. Type `quit`, `exit`, `q`, or press Ctrl+C to leave.
+
+For Qwen3.5 thinking mode, add `--use_thinking True`. Qwen3.5 does not support the Qwen3
+`/think` and `/nothink` soft switches; the CLI flag feeds
+`chat_template_kwargs={"enable_thinking": true}` into the tokenizer.
+
+Run the offline NTNU evaluation:
+
+```bash
+python src/evaluate_ntnu.py generate \
+  --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --output ./models/ntnu/candidate.json
+
+python src/evaluate_ntnu.py blind \
+  baseline=./models/ntnu/baseline.json candidate=./models/ntnu/candidate.json \
+  --output ./models/ntnu/review.json \
+  --key ./models/ntnu/key.json
+
+python src/evaluate_ntnu.py score \
+  --review ./models/ntnu/review.json \
+  --key ./models/ntnu/key.json \
+  --baselines baseline1 baseline2 \
+  --output ./models/ntnu/score.json
+```
+
+The `--baselines` names must match names used in the `blind` step. `generate` requires an
+adapter and forces BF16 weights; use `--bf16_weights` or `--load_in_4bit` explicitly if
+you need to control the weight format.
+
+---
+
+## Installation
+
+This is a compact reference for the steps already walked through above.
+
+### Install Miniconda from Scratch
+
+See [Step 1](#step-1--install-conda-from-scratch) for platform-specific installers.
+Miniconda is enough; verify with `conda --version`.
+
+### Create the `ai` Environment
+
+```bash
+conda create -n ai python=3.11 -y
+conda activate ai
+python --version
+```
+
+### Install and Verify a Backend
+
+`install_deps.py` uses the currently active Python, so activate `ai` first. The Bash
+wrapper forwards every flag verbatim; the PowerShell wrapper uses `-Backend` and
+`-Rocm4Bit`.
+
+| Backend | Command | Wheel index used by installer |
+|---|---|---|
+| NVIDIA CUDA | `python scripts/install_deps.py --backend cuda` | `https://download.pytorch.org/whl/cu128` |
+| AMD ROCm | install AMD wheel first, then `python scripts/install_deps.py --backend rocm` | none; expects a preinstalled wheel |
+| Apple Silicon | `bash scripts/install_deps.sh --backend mps` | PyPI, native arm64 only |
+| Intel XPU | `python scripts/install_deps.py --backend xpu` | `https://download.pytorch.org/whl/xpu` |
+| CPU | `python scripts/install_deps.py --backend cpu` | `https://download.pytorch.org/whl/cpu`, or PyPI on macOS |
+| Windows PowerShell | `powershell -File scripts/install_deps.ps1 -Backend cuda` | same as `cuda` |
+
+The installer verifies a real tensor operation, then installs
+`requirements.txt` on CUDA or `requirements-common.txt` elsewhere and re-pins the exact
+torch version it just verified. ROCm NF4 needs `--rocm-4bit` and adds
+`bitsandbytes>=0.50.0`.
+
+Core packages from `requirements-common.txt`:
+
+| Package | Minimum | Purpose |
+|---|---|---|
+| `torch` | `>=2.4.0,<2.12` | Tensor math and GPU kernels; backend-specific wheel |
+| `transformers` | `>=5.12.1` | Qwen model, tokenizer, chat template |
+| `peft` | `>=0.13.0` | LoRA / QLoRA adapters |
+| `trl` | `>=1.6.0` | `SFTTrainer` |
+| `accelerate` | `>=1.13.0` | Device placement and distributed helpers |
+| `datasets` | `>=3.0.0` | Loading JSON / JSONL / Hub datasets |
+| `packaging` | `>=21.0` | PyTorch version capability checks |
+| `certifi` | `>=2023.7.22` | CA bundle used by the SSL repair in `model_utils.py` |
+
+`requirements.txt` additionally sets the cu128 index and installs
+`bitsandbytes>=0.46.1` for NVIDIA NF4.
+
+Official backend references:
+
+- NVIDIA CUDA: https://developer.nvidia.com/cuda-downloads
+- PyTorch wheels: https://pytorch.org/get-started/locally/
+- AMD ROCm: https://rocm.docs.amd.com/
+- Apple Metal / MPS: https://developer.apple.com/metal/pytorch/
+- Intel XPU: https://pytorch.org/docs/stable/xpu.html
+
+---
+
+## Model Catalog: Qwen3.5 and Qwen3
+
+Official specs below come from the linked Hugging Face model cards (checked 2026-11-26).
+The HF metadata column records what the Hugging Face page reports separately from the
+model card text; the two counting conventions are **not interchangeable**. Project
+revisions come from `models/ntnu/windows-comparison/observations.json` and are a local
+test record, not official specs.
+
+| Model ID | Official parameters | HF metadata | Context length | Architecture | Default thinking mode | Project revision |
+|---|---|---|---|---|---|---|
+| `Qwen/Qwen3.5-4B` | 4B | 5B | 262,144; extensible to 1,010,000 | Causal LM with vision encoder; Gated DeltaNet + sparse MoE | thinking (`<think>…</think>`) | `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` |
+| `Qwen/Qwen3.5-2B` | 2B | — | 262,144 | Hybrid sparse MoE with vision encoder | non-thinking; can enable thinking | `15852e8c16360a2fea060d615a32b45270f8a8fc` |
+| `Qwen/Qwen3.5-0.8B` | 0.8B | 0.9B | 262,144 | Hybrid sparse MoE with vision encoder | non-thinking; official card warns about thinking loops | — (code default) |
+| `Qwen/Qwen3.5-9B` | 9B | 10B | 262,144; extensible to 1,010,000 | Hybrid sparse MoE with vision encoder | thinking | — |
+| `Qwen/Qwen3-4B-Instruct-2507` | 4.0B (3.6B non-embedding) | — | 262,144 | Causal LM; 36 layers; GQA 32 Q / 8 KV heads | non-thinking only | `cdbee75f17c01a7cc42f958dc650907174af0554` |
+
+Official model cards:
+
+- [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)
+- [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)
+- [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)
+- [Qwen3.5-9B](https://huggingface.co/Qwen/Qwen3.5-9B)
+- [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)
+
+Notes:
+
+1. All five are licensed `apache-2.0`. No release date is asserted: the cards cite
+   February 2026, which is not an explicit release date.
+2. Qwen3.5 models do **not** officially support the Qwen3 `/think` and `/nothink` soft
+   switches. Control thinking with `chat_template_kwargs={"enable_thinking": ...}`,
+   exposed here as `--use_thinking True|False`.
+3. Qwen3-4B-Instruct-2507 supports non-thinking only; passing `--use_thinking False` is
+   harmless but unnecessary.
+4. `Qwen/Qwen3.5-0.8B` is the default because it is small enough for CPU smoke tests. It
+   is not the recommended model for real results.
+5. The base model ID passed to inference must match the one used for training. No merged
+   full model is exported.
 
 ---
 
@@ -443,8 +1081,8 @@ flowchart TD
   and flat text. All are converted to chat messages internally.
 - **Hugging Face Hub integration** — load datasets directly from the Hub and push trained
   adapters back.
-- **Thinking mode** — optionally enable Qwen3's `<think>` reasoning tags during training
-  and inference.
+- **Thinking mode** — enable Qwen3.5 `<think>` reasoning through the chat template during
+  training and inference.
 - **CLI-first design** — every hyperparameter is a command-line flag; no YAML needed.
 - **Multiple compute backends** — NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), Intel XPU,
   and a float32 CPU fallback.
@@ -457,7 +1095,7 @@ flowchart TD
 - **Pre / post fine-tuning comparison** — test the base model first, then compare it
   side by side with the fine-tuned model.
 - **Interactive inference** — the model stays loaded and prompts are read in a loop by
-  default; `--no_interactive` runs a single prompt and exits.
+  default; `--no_interactive` runs one prompt and exits.
 - **Evaluation split** — automatic train/test split with best-model selection by eval loss.
 - **Gradient checkpointing** — enabled by default to reduce peak memory.
 - **Offline quality benchmark** — deterministic generation, blinded human review, and
@@ -476,7 +1114,8 @@ flowchart TD
 | CPU (unquantized, float32) | — | Any CPU, very slow; smoke tests only |
 
 These VRAM figures are NVIDIA examples. On Apple Silicon, weights, activations, and the
-OS share unified memory. Start with Qwen3.5-0.8B when checking a new machine.
+OS share unified memory. Start with `Qwen3.5-0.8B` when checking a new machine. If you
+run out of memory, reduce `--max_seq_length` before changing anything else.
 
 Training, inference, both inspection tools, and NTNU evaluation accept
 `--device auto|gpu|cuda|rocm|mps|xpu|cpu`. Auto-detection tries CUDA, ROCm, MPS, XPU,
@@ -487,146 +1126,6 @@ Training and inference default to NF4 on NVIDIA CUDA. ROCm defaults to unquantiz
 weights and accepts `--load_in_4bit True` only after its kernel preflight passes. MPS and
 XPU use unquantized weights. CPU uses unquantized `float32`. Both inspection tools default
 to unquantized weights on every backend.
-
----
-
-## Installation
-
-Use **Python 3.11 or 3.12** with a compatible PyTorch wheel. For ROCm, use the Python
-version required by your AMD release. Create a fresh environment for each PyTorch backend.
-
-### Option 1 — Miniconda (Recommended)
-
-```bash
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
-
-conda create -n finetune python=3.11 -y
-conda activate finetune
-
-# Install the platform default, or choose a backend below
-python scripts/install_deps.py
-```
-
-### Option 2 — venv
-
-```bash
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
-
-python -m venv venv
-source venv/bin/activate        # Linux / macOS
-# venv\Scripts\activate         # Windows PowerShell
-
-python scripts/install_deps.py
-```
-
-### Install and verify a backend
-
-`install_deps.py` selects a PyTorch wheel, runs a small tensor computation, and prints
-the active backend and PyTorch version. Its default is MPS on Apple Silicon macOS, CPU on
-Intel macOS, and CUDA on Windows and Linux. The Bash wrapper forwards the Python flags;
-the PowerShell wrapper uses `-Backend` and `-Rocm4Bit`.
-
-| Backend | Install in the active environment | Verify model tooling |
-|---|---|---|
-| NVIDIA CUDA (Linux / Windows) | `python scripts/install_deps.py --backend cuda` | `python src/inspect_model.py --device cuda --no_load` |
-| AMD ROCm (Linux / WSL2 / Windows) | Install the AMD PyTorch wheel, then `python scripts/install_deps.py --backend rocm` | `python src/inspect_model.py --device rocm --no_load` |
-| Apple M series (macOS) | `bash scripts/install_deps.sh --backend mps` with native arm64 Python | `python src/inspect_model.py --device mps --no_load` |
-| Intel XPU (Linux / Windows) | `python scripts/install_deps.py --backend xpu` after installing the GPU driver | `python src/inspect_model.py --device xpu --no_load` |
-| CPU | `python scripts/install_deps.py --backend cpu` | `python src/inspect_model.py --device cpu --no_load` |
-
-For ROCm, match the driver, GPU, and PyTorch wheel before running the installer. For
-AMD NF4, run `python scripts/install_deps.py --backend rocm --rocm-4bit` or
-`powershell -File scripts/install_deps.ps1 -Backend rocm -Rocm4Bit`, using a
-bitsandbytes build that matches your GPU and ROCm release.
-
-`python -m pip install -r requirements.txt` remains available for a direct NVIDIA CUDA
-installation. For other backends, the installer uses `requirements-common.txt` after
-selecting or verifying PyTorch.
-
-References: [AMD Linux](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html) ·
-[AMD WSL2](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html) ·
-[AMD Windows](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installryz/windows/install-pytorch.html) ·
-[Intel XPU](https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html) ·
-[bitsandbytes ROCm](https://huggingface.co/docs/bitsandbytes/installation#amd-rocm)
-
-Core packages:
-
-| Package | Constraint in requirements | Purpose |
-|---|---|---|
-| `torch` | `>=2.4.0,<2.12` | Deep learning framework (cu128 wheel via `requirements.txt`) |
-| `transformers` | `>=5.12.1` | Qwen model loading, tokenization, and training |
-| `peft` | `>=0.13.0` | LoRA / QLoRA adapter configuration |
-| `trl` | `>=1.6.0` | `SFTTrainer` with assistant labels and chunked loss |
-| `accelerate` | `>=1.13.0` | Trainer placement and mixed precision |
-| `bitsandbytes` | CUDA `>=0.46.1`, ROCm `>=0.50.0` | Optional 4-bit NF4 quantization |
-| `datasets` | `>=3.0.0` | Dataset loading and processing |
-| `packaging` | `>=21.0` | PyTorch version checks |
-
-Run the hardware-independent regression tests with:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
----
-
-## Quick Start
-
-### Cross-platform smoke test
-
-After installing a backend, run one training step on Qwen3.5-0.8B and reload the adapter.
-Replace `gpu` with `mps`, `rocm`, `xpu`, `cuda`, or `cpu` to select the backend explicitly.
-On a compatible AMD GPU, add `--load_in_4bit True` to both Python commands to exercise NF4.
-
-```bash
-python -c "from pathlib import Path; p=Path('models/backend-smoke'); p.mkdir(parents=True, exist_ok=True); (p/'train.jsonl').write_bytes(Path('data/ntnu_dataset.jsonl').read_bytes().splitlines(keepends=True)[0])"
-
-python src/train.py --device gpu --dataset_path ./models/backend-smoke/train.jsonl \
-  --num_epochs 1 --test_split 0 --max_seq_length 64 --per_device_batch_size 1 \
-  --gradient_accum_steps 1 --output_dir ./models/backend-smoke/adapter
-
-python src/inference.py --device gpu --mode finetuned \
-  --adapter_path ./models/backend-smoke/adapter \
-  --prompt "What does a tokenizer do?" --max_new_tokens 32 --no_interactive
-```
-
-### NVIDIA 4B preset
-
-Set up a CUDA environment and train on the complete bundled dataset:
-
-```bash
-# 1. Clone and enter the repo
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
-
-# 2. Create and activate an environment (or venv — see Installation)
-conda create -n finetune python=3.11 -y
-conda activate finetune
-
-# 3. Install and verify CUDA
-python scripts/install_deps.py --backend cuda
-
-# 4. Train on the bundled NTNU dataset (1,252 ChatML examples)
-bash scripts/train_preset.sh gpu-12gb-4b
-# Equivalent manual command:
-# python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl \
-#   --output_dir ./models/ntnu/gpu-12gb-4b
-
-# 5. Base model before fine-tuning
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-  --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# 6. Fine-tuned model after training
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b \
-  --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# 7. Interactive chat (type quit / exit / q to stop)
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b
-```
 
 ---
 
@@ -646,20 +1145,15 @@ fine-tuning-playground/
 │   └── inspect_tokenizer.py            # Token pieces, IDs, and embedding vectors
 ├── data/
 │   ├── ntnu_dataset.jsonl              # Bundled NTNU ChatML dataset (1,252 records)
-│   ├── full_dataset.jsonl              # Aggregated NTNU + Taiwan dataset (1,746 records)
-│   ├── generate_ntnu_dataset.py        # Aggregates ntnu/ + taiwan/ into full_dataset.jsonl
-│   ├── restructure_dataset.py          # Writes data/splits/ and data/generated/
-│   ├── ntnu/                           # Curated NTNU JSONL files (general, extras)
-│   ├── taiwan/                         # Curated Taiwan JSONL files (7 categories)
-│   └── _archive/                       # Legacy record generator modules
+│   ├── full_dataset.jsonl              # Aggregated extended dataset (1,746 records)
+│   ├── ntnu/                           # Curated NTNU JSONL files
+│   └── taiwan/                         # Curated Taiwan JSONL files
 ├── evaluation/ntnu_qa.jsonl            # 60 held-out prompts, criteria, and sources
 ├── models/                             # Adapters and benchmark data (gitignored)
 ├── scripts/
 │   ├── install_deps.py                 # Backend-aware installer and device probe
 │   ├── install_deps.sh                 # Bash wrapper for the installer
-│   ├── install_deps.ps1                # PowerShell wrapper for the installer
-│   ├── train_preset.sh                 # Bash training presets
-│   └── train_preset.ps1                # PowerShell presets + Windows NTNU benchmarks
+│   └── install_deps.ps1                # PowerShell wrapper for the installer
 ├── tests/test_device_utils.py          # Backend selection and quantization tests
 ├── README.md                           # This file (English)
 └── README.zh-Hant.md                   # Traditional Chinese documentation
@@ -691,23 +1185,12 @@ activation, RoPE theta, tied embeddings), tokenizer metadata, and — unless `--
 is set — parameter counts, embedding shape and memory estimate, dtypes, and placement.
 
 **`src/inspect_tokenizer.py`** — shows how a sentence splits into tokens, each token's ID,
-and its embedding vector from the input embedding layer. It can also look up one token by
-string (`--token`) or by ID (`--token_id`). Byte-level display is humanized (GPT-style
-`Ġ` space prefixes become spaces). At least one of `--sentence`, `--token`, or
-`--token_id` is required.
+and its embedding vector from the input embedding layer. At least one of `--sentence`,
+`--token`, or `--token_id` is required.
 
-**`data/`** — `ntnu_dataset.jsonl` contains 1,252 ChatML records about National Taiwan
-Normal University. `full_dataset.jsonl` contains 1,746 records after aggregating the
-curated `ntnu/` and `taiwan/` subdirectories. `restructure_dataset.py` classifies records
-from `ntnu_dataset.jsonl` into `data/splits/` and generates Taiwan university and district
-questions into `data/generated/`; `generate_ntnu_dataset.py` then aggregates the curated
-subdirectories into `full_dataset.jsonl`. `_archive/` keeps older generator modules for
-reference.
-
-**`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — named presets for common GPU
-tiers. The PowerShell script additionally defines four native Windows NTNU comparison
-presets. Override the dataset with `DATASET_PATH=...` (Bash) or `$env:DATASET_PATH = ...`
-(PowerShell).
+**`scripts/install_deps.py` / `.sh` / `.ps1`** — installs the backend-specific PyTorch
+wheel, verifies it with a real tensor operation, then installs the remaining Python
+dependencies.
 
 **`tests/test_device_utils.py`** — simulates hardware to verify backend selection and
 quantization rules; run it with `python -m unittest discover -s tests -v`.
@@ -720,25 +1203,25 @@ quantization rules; run it with `python -m unittest discover -s tests -v`.
 
 | Category | Parameter | Default | Description |
 |---|---|---|---|
-| **Model** | `--model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model ID; use `Qwen/Qwen3.5-4B` or `Qwen/Qwen3-4B` for real GPU training |
+| **Model** | `--model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face model ID; use `Qwen/Qwen3.5-4B` or another 4B / 9B model for real GPU training |
 | | `--load_in_4bit` | On for CUDA | `True` / `False`; NF4 QLoRA. Opt in on compatible ROCm; rejected on MPS/XPU; ignored on CPU |
 | | `--torch_dtype` | `bfloat16` | `bfloat16`, `float16`, or `float32`; capability checks may choose a different effective dtype |
 | **LoRA** | `--lora_r` | `16` | LoRA rank |
 | | `--lora_alpha` | `32` | LoRA scaling factor, typically `2 × r` |
 | | `--lora_dropout` | `0.05` | Dropout inside LoRA layers |
 | | `--target_modules` | `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj` | Comma-separated module names |
-| **Data** | `--dataset_path` | _(required)_ | Local JSON/JSONL file, directory scanned recursively for `*.jsonl`, or a Hub dataset name. Any path that does not exist locally is passed to `load_dataset()` |
+| **Data** | `--dataset_path` | _(required)_ | Local JSON/JSONL file, directory scanned recursively for `*.jsonl`, or a Hub dataset name. A path that does not exist locally is passed to `load_dataset()` |
 | | `--dataset_format` | `chat` | `chat`, `alpaca`, or `text` |
 | | `--test_split` | `0.05` | Validation fraction in `[0, 1)`; `0` disables evaluation |
 | | `--seed` | `42` | Splitting, initialization, and sampling seed |
 | | `--max_seq_length` | `4096` | Maximum token length per example |
-| | `--use_thinking` | `False` | Pass `enable_thinking` to the chat template |
+| | `--use_thinking` | `False` | Pass `enable_thinking` to the chat template; see the Qwen3.5 notes above |
 | **Optimization** | `--learning_rate`, `--lr` | `2e-4` | Peak learning rate |
 | | `--num_epochs`, `--epochs` | `3` | Training epochs |
 | | `--per_device_batch_size`, `--batch_size` | `2` | Micro-batch per device |
 | | `--gradient_accum_steps` | `8` | Micro-batches per optimizer step |
 | | `--gradient_checkpointing` | `True` | Recompute activations to save memory |
-| | `--group_by_length` | off | Group similar-length examples (`train_sampling_strategy="group_by_length"`) |
+| | `--group_by_length` | off | Group similar-length examples |
 | | `--assistant_only_loss` | off | Supervise assistant turns and their end-of-turn token; requires `--dataset_format chat` |
 | | `--loss_type` | TRL default | `nll` or `chunked_nll` (lower vocabulary-projection memory) |
 | | `--warmup_ratio` | `0.03` | Numeric value passed as `SFTConfig(warmup_steps=...)` in this version |
@@ -775,10 +1258,6 @@ eval split, and benchmarks cannot be combined with Hub pushes.
 | | `--top_p` | `0.9` | Nucleus sampling threshold |
 | | `--use_thinking` | `False` | Enable thinking mode in the chat template |
 | **Flow** | `--no_interactive` | off | Run the prompt once and exit. **A non-empty `--prompt` is required** |
-
-With no `--prompt`, the script skips the one-shot test and opens the interactive loop.
-`--no_interactive` without a prompt is a parser error; there are no built-in test prompts
-in `inference.py`.
 
 ### Model inspection (`src/inspect_model.py`)
 
@@ -840,291 +1319,10 @@ for a fresh path.
 
 ---
 
-## Recommended Training Presets
-
-The GPU presets use CUDA or compatible ROCm with bitsandbytes. They request `bfloat16`,
-ChatML format, and an **effective batch size of 16**. For MPS and XPU, use the unquantized
-commands in [Quick Start](#quick-start). All standard presets use a 5% eval split and keep
-the best checkpoint by eval loss.
-
-The bundled NTNU dataset has **1,252** examples, so the standard presets use 3 epochs and
-`lr = 2e-4`. For larger custom data, apply the [dataset-size adjustments](#dataset-size-guidelines).
-
-### Platform & OS
-
-| Platform | Install | List presets | Run training | Notes |
-|---|---|---|---|---|
-| **Linux** | `bash scripts/install_deps.sh` | `bash scripts/train_preset.sh --list` | `bash scripts/train_preset.sh gpu-12gb-4b` | Native CUDA recommended |
-| **Apple Silicon macOS** | `bash scripts/install_deps.sh --backend mps` | same as Linux | [Cross-platform smoke test](#cross-platform-smoke-test) | Use `--device mps` |
-| **Windows (PowerShell)** | `powershell -File scripts/install_deps.ps1` | `powershell -File scripts/train_preset.ps1 -List` | `powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b` | Set `$env:PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` if OOM |
-| **Windows (Git Bash)** | `bash scripts/install_deps.sh` | same as Linux | same as Linux | Same commands as Linux |
-
-Override the dataset, output directory, or hyperparameters without editing scripts:
-
-```bash
-# Custom dataset (Linux / Git Bash)
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-
-# Larger dataset — fewer epochs (30K+ examples)
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
-  bash scripts/train_preset.sh gpu-24gb-9b
-
-# Custom output directory
-OUTPUT_DIR=./models/my-run bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-```powershell
-# Custom dataset (Windows PowerShell)
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b
-
-# Larger dataset — fewer epochs
-$env:NUM_EPOCHS = "2"
-$env:LEARNING_RATE = "1.5e-4"
-$env:DATASET_PATH = ".\data\large.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-Environment overrides supported by both scripts: `DATASET_PATH`, `OUTPUT_DIR`,
-`NUM_EPOCHS`, and `LEARNING_RATE`.
-
-### VRAM and Model Size (QLoRA)
-
-Starting points before [dataset-size](#dataset-size-guidelines) tuning. Reduce
-`--max_seq_length` first if you hit OOM; then try
-`--target_modules q_proj,k_proj,v_proj,o_proj`.
-
-| VRAM | Model | Batch | Accum | Eff. Batch | Max Seq | LoRA r | Epochs | LR | Typical GPU |
-|---|---|---|---|---|---|---|---|---|---|
-| 6–8 GB | Qwen3.5-4B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 / 4060 / 4070 |
-| 12 GB | Qwen3.5-4B | 2 | 8 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 12 GB / 4070 |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 1536 | 16 | 3 | 2e-4 | RTX 5070 Ti laptop |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | Attention-only LoRA if OOM |
-| 16 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4080 16 GB / 4070 Ti Super |
-| 24 GB | Qwen3.5-4B | 2 | 8 | 16 | 4096 | 32 | 3 | 2e-4 | RTX 3090 / 4090 |
-| 24 GB | Qwen3.5-9B | 2 | 8 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4090 / A5000 |
-| CPU | Qwen3.5-0.8B | 1 | 4 | 4 | 512 | 8 | 1 | 2e-4 | Smoke test only; `--device cpu` |
-
-### Dataset Size Guidelines
-
-Apply these on top of a [hardware preset](#vram-and-model-size-qlora). Keep the effective
-batch size in the 16–32 range.
-
-| Examples | Epochs | Learning Rate | LoRA r | test_split | Preset override | Notes |
-|---|---|---|---|---|---|---|
-| < 500 | 3–5 | 1e-4 | 16 | 0.10 | `LEARNING_RATE=1e-4 NUM_EPOCHS=5` | High overfit risk; monitor eval loss |
-| 500 – 5,000 | 3 | 2e-4 | 16 | 0.05 | _(preset defaults)_ | Bundled NTNU (1,252 records) |
-| 5,000 – 30,000 | 2–3 | 1.5e-4 – 2e-4 | 32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | Higher rank helps domain adaptation |
-| 30,000+ | 1–2 | 1.5e-4 | 16–32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | Avoid 3+ epochs; watch for overfitting |
-
-For 30K+ examples for example:
-
-```bash
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
-  bash scripts/train_preset.sh gpu-24gb-9b
-```
-
-### Named Presets
-
-These ten presets exist in **both** scripts:
-
-| Preset | Target Hardware | Model | Purpose |
-|---|---|---|---|
-| `smoke-4b` | CUDA or compatible ROCm | Qwen3.5-4B | 1-epoch pipeline check |
-| `smoke-9b` | 12 GB+ GPU | Qwen3.5-9B | 1-epoch pipeline check |
-| `cpu-smoke` | CPU only | Qwen3.5-0.8B | Verify installation without a GPU |
-| `gpu-8gb-4b` | 6–8 GB | Qwen3.5-4B | Entry-level consumer GPU |
-| `gpu-12gb-4b` | 12 GB | Qwen3.5-4B | Balanced 4B on 12 GB |
-| `gpu-12gb-9b` | 12 GB mobile/desktop | Qwen3.5-9B | Recommended for RTX 5070 Ti 12 GB laptop |
-| `gpu-12gb-9b-long` | 12 GB | Qwen3.5-9B | 2048-token answers, attention-only LoRA |
-| `gpu-16gb-9b` | 16 GB | Qwen3.5-9B | Full 7-layer LoRA, r=32 |
-| `gpu-24gb-4b` | 24 GB | Qwen3.5-4B | High-quality 4B, 4096-token context |
-| `gpu-24gb-9b` | 24 GB | Qwen3.5-9B | Recommended desktop 9B training |
-
-### Preset Scripts
-
-Optional: reduce CUDA fragmentation on Windows / Git Bash before training:
-
-```bash
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-```
-
-**Linux / macOS / Git Bash:**
-
-```bash
-bash scripts/train_preset.sh --list
-bash scripts/train_preset.sh smoke-9b
-bash scripts/train_preset.sh gpu-12gb-9b
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-24gb-9b
-OUTPUT_DIR=./models/my-run DATASET_PATH=./data/my.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-**Windows PowerShell:**
-
-```powershell
-powershell -File scripts/train_preset.ps1 -List
-powershell -File scripts/train_preset.ps1 -Preset smoke-9b
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-9b
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-### Native Windows NTNU Benchmark
-
-These four presets exist **only in `scripts/train_preset.ps1`**, not in the Bash script.
-Use a CUDA Python environment. The RTX 5070 Ti Laptop checks used Python 3.11,
-PyTorch 2.11.0+cu128, Transformers 5.12.1, TRL 1.6.0, PEFT 0.19.1, and
-bitsandbytes 0.49.2. Confirm your active Python reports CUDA before starting.
-
-| Preset | Model | Weights | Micro-batch × accumulation | Epochs | Sequence |
-|---|---|---|---|---|---|
-| `ntnu-win-baseline` | Qwen3.5-4B | NF4 | 2 × 8 | 3 | 2048 |
-| `ntnu-win-qwen35-4b` | Qwen3.5-4B | NF4 | 4 × 4 | 2 | 512 |
-| `ntnu-win-qwen3-4b` | Qwen3-4B-Instruct-2507 | NF4 | 4 × 4 | 2 | 512 |
-| `ntnu-win-qwen35-2b` | Qwen3.5-2B | BF16 (no quantization) | 8 × 2 | 2 | 512 |
-
-All four use effective batch 16, the bundled 5% validation split, `--loss_type nll`,
-and `--run_metrics`. Non-baseline candidates also use `--group_by_length` and
-`--eval_each_epoch`.
-
-Model revisions cached for these checks:
-
-- `Qwen/Qwen3.5-4B` at `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`
-- `Qwen/Qwen3-4B-Instruct-2507` at `cdbee75f17c01a7cc42f958dc650907174af0554`
-- `Qwen/Qwen3.5-2B` at `15852e8c16360a2fea060d615a32b45270f8a8fc`
-
-```powershell
-conda activate ai
-python -c "import torch; print(torch.__version__, torch.cuda.get_device_name())"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -List
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-baseline -BenchmarkSteps 10
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-qwen3-4b -BenchmarkSteps 10
-```
-
-Pass `-RunMetrics` a distinct JSON path for each repeat. If a candidate runs out of GPU
-memory, retry with `-Checkpointing True`, then halve `-MicroBatch` as needed; the script
-adjusts accumulation automatically to keep effective batch 16. For a one-step smoke test,
-use `-BenchmarkSteps 1 -BenchmarkWarmupSteps 0`. `-AssistantOnly` enables assistant
-labels, and `-LossType chunked_nll` requests the chunked loss. Omit `-BenchmarkSteps` for
-full training; set `$env:NUM_EPOCHS = "3"` and a fresh `$env:OUTPUT_DIR` to compare three
-epochs. `-PythonExecutable` selects an explicit interpreter. Benchmark runs append
-`-short` to the default output directory name.
-
-Generate answers with each candidate's actual model and weights. Add `--bf16_weights`
-for the 2B BF16 candidate; for interactive use, pass the same model and adapter to
-`src/inference.py --mode finetuned`, with `--load_in_4bit False` for BF16.
-
-```powershell
-$results = "models/ntnu/windows-comparison"
-$model = "Qwen/Qwen3-4B-Instruct-2507"
-$adapter = "$results/ntnu-win-qwen3-4b"
-python src/evaluate_ntnu.py generate --model_id $model --adapter_path $adapter --output "$results/candidate.json"
-python src/inference.py --mode finetuned --device gpu --model_id $model --adapter_path $adapter
-```
-
-Run generation for the existing and retrained 4B baselines, then pass the three response
-files to `blind`. Review each answer against every listed criterion, mark `major` for
-fabricated material facts such as invented eligibility, deadlines, amounts, addresses, or
-instructions, and mark `pass` only when all criteria are met. Fill in both booleans and
-describe failures in `note`, then pass the reviewed file and its separate key to `score`.
-
-```powershell
-python src/evaluate_ntnu.py blind "existing=$results/existing.json" "baseline=$results/baseline.json" "candidate=$results/candidate.json" --output "$results/review.json" --key "$results/key.json"
-python src/evaluate_ntnu.py score --review "$results/review.json" --key "$results/key.json" --baselines existing baseline --output "$results/quality.json"
-```
-
-Adopt a candidate when it passes the quality rubric and cuts complete warm-cache runtime
-by at least 25%. Compare `elapsed_seconds` in the metrics files and record first-time
-model downloads separately. For comparable timings, run one training or inference
-workload at a time. On Windows, check dedicated and shared GPU memory in Task Manager when
-a step stalls or CUDA reports an unknown error.
-
-### Manual Commands by Preset
-
-Use these when you prefer a single copy-paste command without the helper script.
-
-**Smoke test — Qwen3.5-4B (any GPU):**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-4B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 1 \
-  --per_device_batch_size 1 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 \
-  --test_split 0.05 --save_steps 200 --output_dir ./models/ntnu/smoke-4b
-```
-
-**12 GB — Qwen3.5-4B + NTNU:**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-4B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 3 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
-  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 200 \
-  --output_dir ./models/ntnu/gpu-12gb-4b
-```
-
-**12 GB laptop — Qwen3.5-9B + NTNU:**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 1536 --num_epochs 3 \
-  --per_device_batch_size 1 --gradient_accum_steps 16 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
-  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 250 \
-  --output_dir ./models/ntnu/gpu-12gb-9b
-```
-
-**24 GB desktop — Qwen3.5-9B + NTNU:**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 3 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 32 --lora_alpha 64 --lora_dropout 0.05 \
-  --test_split 0.05 --save_steps 300 --output_dir ./models/ntnu/gpu-24gb-9b
-```
-
-**24 GB desktop — 30K+ custom examples:**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/large_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 2 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 1.5e-4 --lora_r 32 --lora_alpha 64 --lora_dropout 0.05 \
-  --test_split 0.05 --save_steps 300 --output_dir ./models/custom/gpu-24gb-9b
-```
-
-**Post-training comparison:**
-
-```bash
-python src/inference.py \
-  --mode compare --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b \
-  --load_in_4bit True \
-  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
-```
-
----
-
 ## Data Formats
 
-All three formats are normalized to chat messages before training:
+All three formats are normalized to chat messages before training. To produce any of
+them with ChatGPT, start from [Step 6](#step-6--build-an-sft-dataset-with-chatgpt).
 
 ```mermaid
 flowchart LR
@@ -1168,7 +1366,8 @@ appended to the instruction with a blank line between them.
 }
 ```
 
-Requires `--dataset_format alpaca`.
+Requires `--dataset_format alpaca`. Ask ChatGPT for these three keys instead of
+`messages` if you prefer this schema.
 
 ### Text Format
 
@@ -1200,8 +1399,7 @@ python src/train.py \
 
 `--dataset_path` also accepts a directory: all `*.jsonl` files under it are found
 recursively, sorted, and merged. Be aware that a whole tree can merge overlapping copies
-of the same records (for example `ntnu_dataset.jsonl`, `full_dataset.jsonl`, and their
-category files), so prefer an explicit training file or a curated subdirectory:
+of the same records, so prefer an explicit training file or a curated subdirectory:
 
 ```bash
 python src/train.py \
@@ -1237,9 +1435,6 @@ python src/train.py \
 The model stays loaded and prompts are read in a loop. Enter a question at `You:`; use
 `quit`, `exit`, `q`, or Ctrl+C to stop.
 
-- **No `--prompt`** — goes straight to the input loop.
-- **With `--prompt`** — answers once, then continues into the loop.
-
 ```bash
 # Fine-tuned model — interactive chat
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
@@ -1260,24 +1455,17 @@ Use this for scripts and comparisons. **`--prompt` is mandatory** with this flag
 `inference.py` has no built-in test prompts.
 
 ```bash
-# Base model baseline
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
   --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# Fine-tuned model
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
   --adapter_path ./my-finetuned-model \
   --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# Side-by-side comparison
-python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/my-finetuned-model \
-  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
 ```
 
 ### Inference with Thinking Mode
 
-Pass `--use_thinking True` to enable Qwen's chain-of-thought `<think>` tags. Unless
+Pass `--use_thinking True` to enable Qwen3.5's `<think>` tags. Unless
 `--no_interactive` is set, the script continues to the interactive loop afterwards.
 
 ```bash
@@ -1288,8 +1476,6 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
 ```
 
 ### Inspecting a Model
-
-`src/inspect_model.py` prints a standardized report without needing a dataset:
 
 ```bash
 # Configuration + tokenizer + weights (default)
@@ -1302,42 +1488,21 @@ python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --no_load
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
 ```
 
-The report has three sections: model configuration, tokenizer metadata (including
-special-token IDs and chat-template availability), and model weights (skipped with
-`--no_load`).
-
 ### Inspecting the Tokenizer
-
-`src/inspect_tokenizer.py` shows token pieces, IDs, and the embedding rows the model reads.
-Byte-level tokens are displayed in readable form.
 
 ```bash
 # Split a Traditional Chinese sentence
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
   --sentence "請告訴我國立台灣師範大學的具體位置在哪裡？"
 
-# Split an English sentence
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
-  --sentence "Where is the National Taiwan Normal University?"
-
-# Look up a token string -> its ID and vector
+# Look up a token string and an ID
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "台"
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "臺"
-
-# Look up an ID -> its token string and vector
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token_id 120573
 
-# Print every vector element instead of the first eight
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
-  --sentence "Hello" --vector_limit 0
-
-# Tokenization and IDs only (no model download)
+# Tokenization only, no model download
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
   --sentence "Hello world" --no_model
 ```
-
-For each token, the output includes its text, ID, shape, dtype, norm, mean, standard
-deviation, and values (limited by `--vector_limit`).
 
 ---
 
@@ -1422,6 +1587,71 @@ metrics, the best checkpoint and validation loss, and the benchmark window resul
 
 ---
 
+## Reproducibility: Windows NTNU Benchmark
+
+The four Windows comparison runs are now expressed as plain `src/train.py` commands.
+The flags `--gradient_checkpointing`, `--loss_type`, `--run_metrics`, `--group_by_length`,
+`--eval_each_epoch`, `--eval_batch_size`, `--assistant_only_loss`, `--benchmark_steps`,
+and `--benchmark_warmup_steps` all exist in `train.py`. The versions below use an
+effective batch of 16 and an explicit metrics path.
+
+Recorded revisions and metrics live in
+`models/ntnu/windows-comparison/observations.json`. Package versions recorded there are
+a historical environment, **not** installation requirements; use the versions in
+`requirements-common.txt`.
+
+```bash
+# Baseline: Qwen3.5-4B, NF4, batch 2 x accum 8, 3 epochs, 2048 tokens
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 3 --learning_rate 2e-4 --max_seq_length 2048 \
+  --per_device_batch_size 2 --gradient_accum_steps 8 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-baseline \
+  --loss_type nll \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-baseline/metrics.json
+
+# Qwen3.5-4B short: batch 4 x accum 4, 2 epochs, 512 tokens
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 4 --gradient_accum_steps 4 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen35-4b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 4 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen35-4b/metrics.json
+
+# Qwen3-4B-Instruct-2507 short: non-thinking model, same short settings
+python src/train.py \
+  --model_id Qwen/Qwen3-4B-Instruct-2507 --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 4 --gradient_accum_steps 4 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen3-4b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 4 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen3-4b/metrics.json
+
+# Qwen3.5-2B short: unquantized BF16, batch 8 x accum 2
+python src/train.py \
+  --model_id Qwen/Qwen3.5-2B --load_in_4bit False \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 8 --gradient_accum_steps 2 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen35-2b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 8 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen35-2b/metrics.json
+```
+
+Add `--assistant_only_loss` only with `--dataset_format chat` (the default). For a
+timing-only run, add `--benchmark_steps 10 --benchmark_warmup_steps 3`; no adapter will be
+exported in that mode.
+
+---
+
 ## Output Artifacts
 
 After a normal training run, `output_dir` contains:
@@ -1446,8 +1676,7 @@ trainer state; `--adapter_path` may point at one of them directly.
 
 ## Tips & Best Practices
 
-1. **Start small.** Run `bash scripts/train_preset.sh smoke-9b` (or `cpu-smoke`) before a
-   full run, or use `--max_seq_length 2048 --num_epochs 1` manually.
+1. **Start small.** Run the 4B smoke command or CPU smoke command before a full run.
 2. **Effective batch size** is `per_device_batch_size × gradient_accum_steps × num_gpus`.
    Aim for 16–32. On one GPU, `2 × 8 = 16`.
 3. **Learning rate** — `2e-4` is a robust LoRA default. For fewer than 500 examples,
@@ -1466,6 +1695,8 @@ trainer state; `--adapter_path` may point at one of them directly.
 10. **Keep the evaluation prompts held out** until you are ready to grade a candidate.
 11. **For factual work, prefer `--assistant_only_loss`** with ChatML data so the model is
     not trained to reproduce the question text as an answer.
+12. **Verify generated training data twice** — structure with the JSONL validator, facts
+    with official sources.
 
 ---
 
@@ -1473,17 +1704,20 @@ trainer state; `--adapter_path` may point at one of them directly.
 
 | Problem | Likely cause | Solution |
 |---|---|---|
+| `conda: command not found` | Conda not initialized in this shell | Run `conda init bash` / `zsh`, reopen the terminal, or use Anaconda Prompt on Windows |
+| `python -m pip: No module named pip` | Wrong Python interpreter | Run `conda activate ai` and check `python --version` |
 | Training uses CPU despite an available GPU | The PyTorch wheel or driver cannot access the GPU | Reinstall with the backend's [instructions](#install-and-verify-a-backend) and pass an explicit `--device` |
+| `torch.cuda.is_available()` is `False` after ROCm setup | AMD wheel not installed or ROCm version mismatch | Install the correct AMD wheel first; `--backend rocm` only installs remaining dependencies |
 | `--device gpu` or an explicit GPU is unavailable | Requested accelerator not visible to PyTorch | Verify the wheel and driver, or use `--device cpu` |
 | `OutOfMemoryError` | Micro-batch, sequence length, or LoRA coverage too large | Lower `--max_seq_length` first, then `--per_device_batch_size`, then use attention-only `--target_modules` |
 | `KeyError: 'qwen3'` | Transformers too old | Upgrade to `transformers>=5.12.1` |
 | NF4 fails on CUDA or ROCm | Missing or mismatched bitsandbytes kernels | Match bitsandbytes to the GPU and CUDA/ROCm release; use `--load_in_4bit False` |
 | MPS operator unsupported | PyTorch lacks an MPS kernel | Set `PYTORCH_ENABLE_MPS_FALLBACK=1` before launching Python |
 | `--load_in_4bit True` on MPS or XPU | 4-bit loading is not supported there | Use `--load_in_4bit False` |
-| Hub download / SSL errors | Broken `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` on conda or Windows | `train.py` and `inference.py` repair these at startup; otherwise set them to the certifi bundle |
+| Hub download / SSL errors | Broken `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` | `train.py` and `inference.py` repair these at startup; `certifi` is declared in `requirements-common.txt` |
 | Training loss is NaN | Learning rate too high or dtype issue | Lower `--learning_rate` or use `--torch_dtype bfloat16` |
 | Model repeats one phrase | Overfitting or temperature too low | Reduce `--num_epochs` or raise `--temperature` |
-| `apply_chat_template` error | Data does not match the declared format | Check [Data Formats](#data-formats) and the `--dataset_path` contents |
+| JSONL validator reports bad lines | ChatGPT added prose, fences, or wrong roles | Remove markdown fences and regenerate with Prompt 2 |
 | Local file loaded from the Hub | `dataset_path` does not exist locally | Use `./data/train.jsonl` rather than a misspelled path |
 | `A valid --prompt is required when using --no_interactive` | `--no_interactive` always needs a prompt | Pass `--prompt "..."` or remove `--no_interactive` |
 | `--assistant_only_loss requires --dataset_format chat` | Flag combination is invalid | Use ChatML data or remove the flag |
@@ -1498,6 +1732,7 @@ trainer state; `--adapter_path` may point at one of them directly.
 ## License
 
 This project is licensed under the [MIT License](LICENSE). Qwen3 / Qwen3.5 models are
-released under their respective licenses on Hugging Face (typically Apache 2.0).
+released under their respective licenses on Hugging Face (the models listed above use
+Apache 2.0).
 
 Traditional Chinese documentation: [README.zh-Hant.md](README.zh-Hant.md)

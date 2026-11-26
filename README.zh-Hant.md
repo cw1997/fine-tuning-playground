@@ -1,8 +1,8 @@
-# Fine-Tuning Playground — 微調遊樂場
+# Fine-Tuning Playground
 
-一套面向教學的程式碼，專為 **Qwen3 / Qwen3.5** 僅解碼器（decoder-only）模型（例如 **Qwen3-4B**、**Qwen3.5-4B**）的監督式微調（Supervised Fine-Tuning, SFT）而設計，採用 **LoRA / QLoRA** 技術。底層使用 Hugging Face 的 `transformers`、`peft`、`trl` 與 `bitsandbytes`。
+一個以教學為導向的程式碼庫，用於搭配 **LoRA / QLoRA** 對 **Qwen3 / Qwen3.5** 模型進行**監督式微調（SFT）**。它建構於 Hugging Face 的 `transformers`、`peft`、`trl` 與 `bitsandbytes` 之上。
 
-完整訓練流程集中在單一腳本 [`src/train.py`](src/train.py) 中，由上而下順序執行，所有設定都是命令列參數。沒有設定檔要學，也不需要繼承任何框架類別：你可以從第一行讀到最後一行，確切看到每一步發生什麼事。
+本 README 是一條從「我從未安裝過 Python」到「我訓練出了一個 adapter、執行了推論，並理解中間發生了什麼事」的完整路徑。以下每個指令都可以直接複製貼上，且與本儲存庫中的程式碼一致。整個訓練流程都集中在一個由上到下執行的腳本 [`src/train.py`](src/train.py) 中；每個設定都是 CLI 旗標，不需要學習設定檔，也不需要繼承任何框架類別。
 
 **語言：** [English](README.md) · [繁體中文](README.zh-Hant.md)
 
@@ -12,60 +12,61 @@
 
 - [專案概述](#專案概述)
 - [先從這裡開始：微調究竟如何運作](#先從這裡開始微調究竟如何運作)
-  - [30 秒心智模型](#30-秒心智模型)
+  - [30 秒建立心智模型](#30-秒建立心智模型)
   - [從一個句子到下一個字](#從一個句子到下一個字)
-  - [對話模板在做什麼](#對話模板在做什麼)
-  - [SFT 教會模型什麼，損失又遮住了什麼](#sft-教會模型什麼損失又遮住了什麼)
-  - [訓練流程逐步拆解](#訓練流程逐步拆解)
-  - [為什麼 LoRA 與 QLoRA 能塞進消費級 GPU](#為什麼-lora-與-qlora-能塞進消費級-gpu)
-  - [Epoch、Batch、學習率與其他名詞](#epochbatch學習率與其他名詞)
-  - [推論時會發生什麼](#推論時會發生什麼)
+  - [聊天範本在做什麼](#聊天範本在做什麼)
+  - [SFT 教導什麼，損失又隱藏了什麼](#sft-教導什麼損失又隱藏了什麼)
+  - [為什麼 LoRA 與 QLoRA 能放進消費級 GPU](#為什麼-lora-與-qlora-能放進消費級-gpu)
+  - [Epoch、批次、學習率與其他相關概念](#epoch批次學習率與其他相關概念)
+  - [推論時會發生什麼事](#推論時會發生什麼事)
   - [臺師大評測如何運作](#臺師大評測如何運作)
   - [選擇運算後端](#選擇運算後端)
+  - [為什麼需要 Conda、PyTorch 與 GPU 後端](#為什麼需要-condapytorch-與-gpu-後端)
+- [零基礎到跑起來：完整實作指南](#零基礎到跑起來完整實作指南)
+  - [步驟 0 — 先讀這邊：硬體與術語](#步驟-0--先讀這邊硬體與術語)
+  - [步驟 1 — 從零開始安裝 Conda](#步驟-1--從零開始安裝-conda)
+  - [步驟 2 — 理解 CUDA、ROCm、MPS、XPU 與 CPU](#步驟-2--理解-cudarocmmpsxpu-與-cpu)
+  - [步驟 3 — 建立 `ai` Conda 環境](#步驟-3--建立-ai-conda-環境)
+  - [步驟 4 — 安裝相依套件並驗證 PyTorch](#步驟-4--安裝相依套件並驗證-pytorch)
+  - [步驟 5 — 選擇模型（以及原因）](#步驟-5--選擇模型以及原因)
+  - [步驟 6 — 用 ChatGPT 建立 SFT 資料集](#步驟-6--用-chatgpt-建立-sft-資料集)
+  - [步驟 7 — 使用 `src/train.py` 進行訓練](#步驟-7--使用-srctrainpy-進行訓練)
+  - [步驟 8 — 推論與評測](#步驟-8--推論與評測)
+- [安裝方式](#安裝方式)
+  - [從零開始安裝 Miniconda](#從零開始安裝-miniconda)
+  - [建立 `ai` 環境](#建立-ai-環境)
+  - [安裝並驗證後端](#安裝並驗證後端)
+- [模型選型：Qwen3.5 與 Qwen3](#模型選型qwen35-與-qwen3)
 - [功能特色](#功能特色)
 - [硬體需求](#硬體需求)
-- [安裝方式](#安裝方式)
-  - [方式一 — Miniconda（建議）](#方式一--miniconda建議)
-  - [方式二 — venv](#方式二--venv)
-  - [安裝並驗證後端](#安裝並驗證後端)
-- [快速開始](#快速開始)
-  - [跨平台冒煙測試](#跨平台冒煙測試)
-  - [NVIDIA 4B 預設](#nvidia-4b-預設)
 - [專案結構](#專案結構)
-  - [各檔案說明](#各檔案說明)
+  - [檔案說明](#檔案說明)
 - [設定參數](#設定參數)
-  - [訓練（`src/train.py`）](#訓練-srctrainpy)
-  - [推論（`src/inference.py`）](#推論-srcinferencepy)
-  - [模型檢查（`src/inspect_model.py`）](#模型檢查-srcinspect_modelpy)
-  - [分詞器檢查（`src/inspect_tokenizer.py`）](#分詞器檢查-srcinspect_tokenizerpy)
-  - [臺師大評測（`src/evaluate_ntnu.py`）](#臺師大評測-srcevaluate_ntnupy)
-- [建議訓練預設組合](#建議訓練預設組合)
-  - [平台與作業系統](#平台與作業系統)
-  - [VRAM 與模型規模（QLoRA）](#vram-與模型規模qlora)
-  - [資料集規模指引](#資料集規模指引)
-  - [具名預設組合](#具名預設組合)
-  - [預設腳本](#預設腳本)
-  - [原生 Windows 臺師大基準測試](#原生-windows-臺師大基準測試)
-  - [各預設的手動命令](#各預設的手動命令)
+  - [訓練（`src/train.py`）](#訓練srctrainpy)
+  - [推論（`src/inference.py`）](#推論srcinferencepy)
+  - [模型檢視（`src/inspect_model.py`）](#模型檢視srcinspect_modelpy)
+  - [分詞器檢視（`src/inspect_tokenizer.py`）](#分詞器檢視srcinspect_tokenizerpy)
+  - [臺師大評測（`src/evaluate_ntnu.py`）](#臺師大評測srcevaluate_ntnupy)
 - [資料格式](#資料格式)
   - [ChatML 格式](#chatml-格式)
   - [Alpaca 格式](#alpaca-格式)
-  - [純文字格式](#純文字格式)
+  - [Text 格式](#text-格式)
 - [使用方式](#使用方式)
   - [基本訓練](#基本訓練)
   - [使用 Alpaca 資料集訓練](#使用-alpaca-資料集訓練)
-  - [從 Hugging Face Hub 載入資料集](#從-hugging-face-hub-載入資料集)
-  - [推論 — 互動式（預設）](#推論-互動式預設)
-  - [推論 — 單次執行（`--no_interactive`）](#推論-單次執行no_interactive)
-  - [啟用思考模式推論](#啟用思考模式推論)
-  - [檢查模型](#檢查模型)
-  - [檢查分詞器](#檢查分詞器)
+  - [從 Hugging Face Hub 訓練](#從-hugging-face-hub-訓練)
+  - [推論 — 互動模式（預設）](#推論--互動模式預設)
+  - [推論 — 單次模式（`--no_interactive`）](#推論--單次模式--no_interactive)
+  - [使用思考模式的推論](#使用思考模式的推論)
+  - [檢視模型](#檢視模型)
+  - [檢視分詞器](#檢視分詞器)
 - [進階用法](#進階用法)
   - [自訂 LoRA 目標模組](#自訂-lora-目標模組)
-  - [推送至 Hugging Face Hub](#推送至-hugging-face-hub)
-  - [完整精度 LoRA vs QLoRA](#完整精度-lora-vs-qlora)
-  - [訓練時啟用思考模式](#訓練時啟用思考模式)
-  - [測量速度與記憶體](#測量速度與記憶體)
+  - [推送到 Hugging Face Hub](#推送到-hugging-face-hub)
+  - [全精度 LoRA 與 QLoRA 的比較](#全精度-lora-與-qlora-的比較)
+  - [在訓練時啟用思考模式](#在訓練時啟用思考模式)
+  - [測量速度與記憶體用量](#測量速度與記憶體用量)
+- [重現性：原生 Windows 臺師大基準測試](#重現性原生-windows-臺師大基準測試)
 - [輸出產物](#輸出產物)
 - [建議與最佳實踐](#建議與最佳實踐)
 - [疑難排解](#疑難排解)
@@ -75,78 +76,78 @@
 
 ## 專案概述
 
-**Qwen3** 與 **Qwen3.5** 是阿里巴巴 Qwen 團隊推出的稠密語言模型。4B 等級型號支援長脈絡、分組查詢注意力（grouped-query attention），並可透過對話模板中的 `<think>` 標籤選擇性啟用連鎖思考（chain-of-thought）**思考模式**。
+Qwen3 與 Qwen3.5 是阿里巴巴 Qwen 團隊推出的模型家族。根據其官方模型卡，Qwen3.5 模型採用混合架構，結合了閘控 Delta 網路（Gated Delta Networks）與**稀疏專家混合（sparse Mixture-of-Experts）**以及視覺編碼器；它們並非單純的密集純文字模型。Qwen3-4B-Instruct-2507 則是具備 GQA 注意力機制的因果語言模型，僅支援非思考模式。詳細且附有來源的規格請見[模型選型](#模型選型qwen35-與-qwen3)。
 
-本專案提供一條從「我有一份 JSONL 檔」到「我有一個會改變模型回答方式的適配器」的完整且易讀的路徑：
+本儲存庫提供一條完整且易讀的路徑，從「我有一個 JSONL 檔案」到「我有一個能改變模型回答方式的 adapter」：
 
 ```mermaid
 flowchart LR
-    A["安裝 PyTorch 後端"] --> B["準備 JSONL 問答資料"]
+    A["Install a PyTorch backend"] --> B["Prepare JSONL Q and A pairs"]
     B --> C["src/train.py<br/>SFT + LoRA / QLoRA"]
-    C --> D["models/ 中的 LoRA 適配器"]
+    C --> D["LoRA adapter in models/"]
     D --> E["src/inference.py<br/>base / finetuned / compare"]
     D --> F["src/evaluate_ntnu.py<br/>generate / blind / score"]
-    B --> G["src/inspect_tokenizer.py<br/>查看 token 與 ID"]
-    A --> H["src/inspect_model.py<br/>查看層與參數"]
+    B --> G["src/inspect_tokenizer.py<br/>see tokens and IDs"]
+    A --> H["src/inspect_model.py<br/>see layers and parameters"]
 ```
 
-程式碼採用的核心選擇：
+程式碼所做的核心選擇：
 
-- **QLoRA**（4-bit NormalFloat 加上雙重量化）是 NVIDIA CUDA 上的預設，可把基底模型所需的記憶體降到消費級 GPU（如 RTX 3060 / 4060 / 4070）能負擔的程度。
-- **`trl.SFTTrainer`** 負責監督式微調、對話模板渲染、評估、檢查點與最佳檢查點挑選。
-- **全部七個線性投影層**（`q_proj`、`k_proj`、`v_proj`、`o_proj`、`gate_proj`、`up_proj`、`down_proj`）預設都是 LoRA 目標。
-- 基底模型是**凍結**的。訓練只更新小型 LoRA 矩陣；匯出的適配器只有幾十 MB，而不是好幾 GB 的完整模型。
+- **QLoRA**（4-bit NormalFloat 搭配雙重量化）是 NVIDIA CUDA 上的預設設定。它降低了基礎模型所需的記憶體，使其能放進 RTX 3060 / 4060 / 4070 等消費級 GPU。
+- **`trl.SFTTrainer`** 負責監督式微調、聊天範本渲染、評測、檢查點儲存與最佳檢查點挑選。
+- **全部七層線性投影層**（`q_proj`、`k_proj`、`v_proj`、`o_proj`、`gate_proj`、`up_proj`、`down_proj`）預設都是 LoRA 目標。
+- 基礎模型是**凍結的**。訓練只更新小型 LoRA 矩陣；匯出的 adapter 只有幾十 MB，而不是動輒數 GB 的完整模型。
 
 ---
 
 ## 先從這裡開始：微調究竟如何運作
 
-本節假設讀者沒有機器學習背景。後面章節是參考手冊，本節則在解釋「為什麼指令長這樣」。
+本節假設讀者沒有機器學習背景。後面的章節是參考手冊；本節則解釋*為什麼*指令長這樣。
 
-### 30 秒心智模型
+### 30 秒建立心智模型
 
-| 日常比喻 | 本專案中的對應物件 |
+| 日常生活中的比喻 | 本儲存庫中的對應事物 |
 |---|---|
-| 一個已經讀完圖書館所有書的學生 | 預訓練模型（`Qwen/Qwen3.5-4B` 等） |
-| 一本寫滿範例問題與理想答案的練習簿 | 你的 JSONL 檔（`messages` / `instruction` / `text`） |
-| 寫在書頁邊緣的便利貼，原書不動 | LoRA 適配器（`adapter_model.safetensors`） |
-| 把書縮印成極小字體但仍可閱讀 | 4-bit NF4 基底權重（QLoRA） |
-| 老師批改「不對，往這個方向稍微修正」 | 損失（loss）與梯度（gradient） |
-| 練習老師沒看過的題目 | 保留的驗證分割與臺師大題目集 |
+| 一位已經讀完圖書館裡所有書的學生 | 預訓練好的 Qwen 模型（`Qwen/Qwen3.5-4B` 等） |
+| 一本寫滿範例問題與理想答案的練習簿 | 你的 JSONL 檔案（`messages` / `instruction` / `text`） |
+| 寫在書頁邊緣的便利貼，書本身完全沒動 | LoRA adapter（`adapter_model.safetensors`） |
+| 縮印成小字的影印書，但仍然可以閱讀 | 4-bit NF4 基礎權重（QLoRA） |
+| 老師標註「錯了，往這個方向稍微調整」 | 損失（loss）與梯度 |
+| 練習老師沒看過的題目 | 保留的評測資料分割與臺師大題目集 |
 
-微調**不是**像預訓練那樣從頭教模型事實，而是輕輕推一把已經很有能力的模型，讓它朝向你的範例所展示的風格、格式與領域行為。這也是為什麼幾百到幾千筆好資料就可能有效，而雜訊多的資料一定會有害。
+微調**並不像**預訓練那樣，從頭教會模型各種事實。它是把一個已經具備能力的模型，輕輕推向你的範例所展示的風格、格式與領域行為。這就是為什麼幾百到幾千筆優質範例可能很有用，而雜訊多的範例一定會有害。
 
 ### 從一個句子到下一個字
 
-語言模型看到的不是中文字或英文字母，而是整數，接著是向量，最後是機率。
+語言模型從來不會直接看到中文字或英文字母。它看到的是整數，接著是向量，最後是機率。
 
 ```mermaid
 flowchart TD
-    A["使用者文字"] --> B["分詞器<br/>切成 token 片段"]
-    B --> C["詞表查表<br/>token → 整數 ID"]
-    C --> D["嵌入矩陣<br/>ID → 一列數字"]
-    D --> E["Transformer 層<br/>注意力 + 前饋網路"]
-    E --> F["Logits<br/>詞表中每個詞的分數"]
-    F --> G["Softmax<br/>分數 → 機率"]
-    G --> H["選下一個 token<br/>貪心或取樣"]
-    H --> I["把 ID 解碼回文字"]
-    I --> J{"遇到結束 token 或長度上限？"}
-    J -- "否" --> B
-    J -- "是" --> K["最終回答"]
+    A["User text"] --> B["Tokenizer<br/>split into token pieces"]
+    B --> C["Vocabulary lookup<br/>token → integer ID"]
+    C --> D["Embedding matrix<br/>ID → one row of numbers"]
+    D --> E["Transformer layers<br/>attention + feed-forward"]
+    E --> F["Logits<br/>one score per vocabulary word"]
+    F --> G["Softmax<br/>scores → probabilities"]
+    G --> H["Pick next token<br/>greedy or sampling"]
+    H --> I["Decode IDs back to text"]
+    I --> J{"Stop token or length limit?"}
+    J -- "No" --> B
+    J -- "Yes" --> K["Final answer"]
 ```
 
 重點如下：
 
-- **Token（詞元）** — 一段文字。可能是完整中文詞、單一字元，或英文單字的一部分。執行 `src/inspect_tokenizer.py` 可看見句子確切的切法。
-- **ID** — 該片段在固定詞表中的索引。嵌入表每個 ID 都有一列；`src/inspect_tokenizer.py --token_id 120573` 會印出那一列。
-- **Embedding（嵌入向量）** — 模型真正消費的「意義座標」。
-- **Logits → 機率** — 模型對「下一個 token 是每一個詞」各給一個分數。`--temperature` 與 `--top_p` 決定挑選時有多冒險；`temperature 0` 會貪心解碼，結果固定（評測腳本正是這麼做）。
-- **自回歸迴圈（autoregressive loop）** — 選到的 token 會接回輸入，模型再跑一次。`--max_new_tokens` 限制這個動作最多幾次。
-- **脈絡長度** — 訓練時的 `--max_seq_length` 與模型本身的脈絡視窗，決定一次能考慮多少 token。序列越長越耗記憶體；遇到 OOM 時先調小它。
+- **Token（詞元）** — 一小段文字。它可能是一個完整的中文詞、一個字，或英文單字的一部分。執行 `src/inspect_tokenizer.py` 就能看到你的句子被切成了哪些片段。
+- **ID** — 該片段在固定詞彙表中的索引。嵌入表中每個 ID 都有一列；`src/inspect_tokenizer.py --token_id 120573` 會印出那一列。
+- **Embedding（嵌入向量）** — 模型真正消耗的數值「意義座標」。
+- **Logits → 機率** — 模型會為*每一個*可能的下一個 token 輸出一個分數。`--temperature` 與 `--top_p` 決定選擇時有多「大膽」。`temperature 0` 會讓生成變成貪婪且確定性的（評測腳本就是這樣做的）。
+- **自迴歸迴圈** — 選到的 token 會被接到輸入後面，模型再跑一次。`--max_new_tokens` 限制這件事最多發生幾次。
+- **上下文長度** — `--max_seq_length`（訓練）與模型的上下文視窗決定一次能考量多少個 token。序列越長用的記憶體越多；如果遇到 OOM，先降低長度，再動其他設定。
 
-### 對話模板在做什麼
+### 聊天範本在做什麼
 
-模型無法只靠串接字串判斷誰在說話。Qwen 使用 ChatML 風格模板與明確的控制 token：
+模型無法從單純的字串拼接中判斷是誰在說話。Qwen 使用 ChatML 風格的範本，並搭配明確的控制 token：
 
 ```text
 <|im_start|>system
@@ -157,190 +158,162 @@ You are a helpful assistant.<|im_end|>
 國立臺灣師範大學位於臺北市大安區和平東路一段 162 號。<|im_end|>
 ```
 
-訓練時，`train.py` 呼叫 `tokenizer.apply_chat_template(..., tokenize=False,
-add_generation_prompt=False)`，並把結果字串存到 `text` 欄位。因此模型學到的是分隔符號，不只是文字。推論時，`inference.py` 使用 `add_generation_prompt=True`，讓提示詞以 `<|im_start|>assistant\n` 結尾，使下一個 token 從回答開始。
+```mermaid
+flowchart LR
+    A["user message"] --> B["apply_chat_template"]
+    C["assistant message"] --> B
+    B --> D["im_start user ... im_end"]
+    D --> E["im_start assistant ... im_end"]
+    E --> F["Token IDs the model trains on"]
+```
 
-這也是為什麼訓練與推論的基底模型 ID 必須一致：模板與詞表都屬於那個特定的分詞器。
+訓練時，`train.py` 會呼叫 `tokenizer.apply_chat_template(..., tokenize=False, add_generation_prompt=False)`，並把結果字串存到 `text` 欄位。因此模型學到的是那些分隔符號，而不只是文字。推論時，`inference.py` 使用 `add_generation_prompt=True`，讓提示詞以 `<|im_start|>assistant\n` 結尾，這樣下一個 token 就會開始回答。
 
-### SFT 教會模型什麼，損失又遮住了什麼
+這也是為什麼訓練與推論時的基礎模型 ID 必須一致：範本與詞彙表都屬於那個特定的分詞器。
 
-訓練會比較模型在每個位置對「正確下一個 token」的機率分布與正確答案，並調整可訓練權重，讓正確答案的機率上升。這就是交叉熵（cross-entropy，也稱 NLL）損失。
+### SFT 教導什麼，損失又隱藏了什麼
+
+訓練會比較模型的機率分佈與每個位置上正確的下一個 token，並調整可訓練的權重以提高該機率。這就是交叉熵（cross-entropy，也稱為 NLL）損失。
 
 ```mermaid
 flowchart LR
-    A["渲染後的對話"] --> B["Token ID"]
-    B --> C["模型預測"]
-    B --> D["標籤：正確的下一個 token"]
-    C --> E["損失＝預測與標籤的差距"]
+    A["Rendered conversation"] --> B["Token IDs"]
+    B --> C["Model predictions"]
+    B --> D["Labels: correct next tokens"]
+    C --> E["Loss = how far predictions are from labels"]
     D --> E
-    E --> F["梯度：改善方向"]
-    F --> G["只更新 LoRA 權重"]
+    E --> F["Gradients: direction of improvement"]
+    F --> G["Update LoRA weights only"]
 ```
 
-本專案預設監督**整段渲染後的 `text`**。若傳入 `--assistant_only_loss`，TRL 會改為接收 `messages` 欄位並遮蔽系統／使用者部分，使損失只來自助理回應與其回合結束 token。腳本會驗證每一筆資料，拒絕助理回答被截斷的紀錄。此旗標需要 `--dataset_format chat`。
+本專案預設會監督**整體渲染後的 `text`**。如果你傳入 `--assistant_only_loss`，TRL 會改為接收 `messages` 欄位，並遮蔽系統／使用者部分，因此損失只來自 assistant 回合及其回合結束 token。腳本會驗證每一列，並拒絕被截斷的 assistant 目標。此旗標需要搭配 `--dataset_format chat`。
 
-### 訓練流程逐步拆解
+### 為什麼 LoRA 與 QLoRA 能放進消費級 GPU
 
-請對照 [`src/train.py`](src/train.py) 閱讀下圖；訊息順序與 `main()` 函式一致。
-
-```mermaid
-sequenceDiagram
-    participant You as 你
-    participant T as train.py
-    participant D as device_utils
-    participant M as model_utils
-    participant P as PEFT
-    participant Data as Dataset / SFTTrainer
-    participant Disk as 磁碟
-
-    You->>T: python src/train.py --dataset_path ...
-    T->>T: parse_args()、set_seed()、修正 SSL 憑證
-    T->>D: resolve_device(training=True)
-    D-->>T: 後端、torch 裝置、dtype、NF4 旗標
-    T->>M: load_tokenizer()、load_base_model()
-    M-->>T: 凍結的基底模型已放在選定裝置
-    T->>P: get_peft_model(LoraConfig(...))
-    P-->>T: 基底凍結、LoRA 矩陣可訓練
-    T->>Data: 載入 JSON / JSONL / 目錄 / Hub
-    T->>Data: 套用模板、分割訓練與驗證集
-    T->>Data: SFTConfig + SFTTrainer
-    loop 每個 optimizer step
-        Data->>Data: 對 micro-batch 做 forward
-        Data->>Data: 對標籤計算 loss
-        Data->>P: backward（只算 LoRA 梯度）
-        Data->>P: optimizer.step()
-    end
-    opt 每 eval_steps / 每個 epoch
-        Data->>Data: 評估損失，保留最佳檢查點
-    end
-    Data-->>T: 訓練指標與最佳檢查點
-    T->>Disk: save_model() 與 tokenizer.save_pretrained()
-```
-
-值得注意的細節：
-
-- 資料集是在模型與適配器準備好**之後**才載入。
-- `--benchmark_steps N>0` 會在 `warmup + N` 個 optimizer step 後停止，印出時間與吞吐量，並刻意**不輸出適配器**。
-- 當 `--test_split > 0` 時，`load_best_model_at_end=True` 會在匯出前載回驗證損失最低的檢查點，因此最終目錄保存的是最佳模型，不一定是最後一個。
-- `save_total_limit=2` 在磁碟上只保留最近兩個檢查點。
-
-### 為什麼 LoRA 與 QLoRA 能塞進消費級 GPU
-
-4B 模型光是 BF16 權重就約 8 GB，還沒算激活值、梯度與 optimizer 狀態。完整微調需要好幾倍於此的記憶體。LoRA 凍結基底權重，只在每個目標線性層旁邊學習兩個小矩陣：
+一個 4B 模型在 BF16 下，光權重就大約 8 GB，還沒算上活化值、梯度與優化器狀態。完整微調需要的記憶體是這個的好幾倍。LoRA 會保持基礎權重凍結，並在每個目標線性層旁邊學習兩個小矩陣：
 
 ```text
-原始：   y = W x                 W：很大、凍結
-LoRA：   y = W x + (alpha / r) * B A x
-         A：r x in_features      B：out_features x r      （兩者可訓練）
+original:   y = W x                 W: big, frozen
+LoRA:       y = W x + (alpha / r) * B A x
+            A: r x in_features      B: out_features x r      (both trainable)
 ```
 
 ```mermaid
 flowchart LR
-    subgraph GPU["GPU 記憶體"]
-        A["基底權重<br/>NF4 4-bit，凍結"]
-        B["輸入激活值<br/>計算用的 dtype"]
-        C["LoRA A / B<br/>可訓練"]
-        D["梯度 + Adam 狀態<br/>只有 LoRA"]
+    subgraph GPU["GPU memory"]
+        A["Base weights<br/>NF4 4-bit, frozen"]
+        B["Input activations<br/>compute dtype"]
+        C["LoRA A / B<br/>trainable"]
+        D["Gradients + Adam states<br/>LoRA only"]
     end
     A --> E["Forward pass"]
     B --> E
-    E --> F["預測與損失"]
+    E --> F["Prediction and loss"]
     F --> G["Backward pass"]
     G --> D
 ```
 
-- `r`（`--lora_r`）是秩（rank），也就是小瓶頸的寬度。較大的 `r` 能表示較複雜的變化，但較耗記憶體。
-- `alpha`（`--lora_alpha`）縮放 LoRA 更新量。預設組合使用 `alpha = 2 * r`。
-- `target_modules` 選擇「在哪裡」裝適配器。預設涵蓋注意力與前饋投影。記憶體吃緊時，優先試試只留注意力層（`q_proj,k_proj,v_proj,o_proj`）。
-- QLoRA 另外把凍結基底存成 4-bit NF4 並使用雙重量化，數學運算則在 `bfloat16` / `float16` 中進行。梯度與 optimizer 狀態只存在於 LoRA 參數，這就是主要的節省來源。
-- `--gradient_checkpointing`（預設開啟）在 backward 時重新計算中間激活值，以一點速度換取較低的峰值記憶體。
+- `r`（`--lora_r`）是秩（rank），也就是那個小瓶頸的寬度。較大的 `r` 能表達更複雜的變化，但會用掉較多記憶體。
+- `alpha`（`--lora_alpha`）用來縮放 LoRA 更新。本 README 中的指令都使用 `alpha = 2 * r`。
+- `target_modules` 決定 adapter 要放在*哪裡*。預設涵蓋注意力與前饋投影層。當記憶體很緊時，首先可以試試只針對注意力（`q_proj,k_proj,v_proj,o_proj`）。
+- QLoRA 另外會把凍結的基礎模型以 4-bit NF4 搭配雙重量化儲存，並在 `bfloat16`/`float16` 中進行運算。梯度與優化器狀態只存在於 LoRA 參數上，這就是節省記憶體的關鍵。
+- `--gradient_checkpointing`（預設開啟）會在反向傳播時重新計算中間活化值，用一些速度換取較低的峰值記憶體。
 
-### Epoch、Batch、學習率與其他名詞
+### Epoch、批次、學習率與其他相關概念
 
-| 名詞 | 白話說明 | 本專案參數 |
+| 術語 | 白話意義 | 本儲存庫中的旗標 |
 |---|---|---|
-| Example（範例） | JSONL 中的一筆問答紀錄 | `dataset_path` |
-| Token（詞元） | 分詞後的一段文字 | `max_seq_length` |
-| Batch（批次） | 一次 forward 一起處理的範例數 | `per_device_batch_size` |
-| Accumulation（累積） | 先累積幾個小批次，再一次更新權重 | `gradient_accum_steps` |
-| Effective batch（有效批次） | `per_device_batch_size × gradient_accum_steps × GPU 數量` | 推導而得 |
-| Epoch（訓練輪次） | 完整看過訓練集一次 | `num_epochs` / `--epochs` |
-| Learning rate（學習率） | 每次更新權重的步幅 | `learning_rate` / `--lr` |
-| Warmup（暖機） | 一開始讓學習率緩慢爬升的短暫階段 | `warmup_ratio` |
-| Seed（隨機種子） | 讓分割與初始化可以重現 | `seed` |
-| Eval split（驗證分割） | 不參與訓練、用來挑最佳檢查點的資料 | `test_split` |
-
-以內附臺師大資料搭配 `gpu-12gb-4b` 試算：
-
-- 1,252 筆，保留 5% → 約 1,189 筆訓練資料。
-- `per_device_batch_size 2 × gradient_accum_steps 8` → 有效批次 16。
-- 每輪約 75 個 optimizer step；三輪約 **225 步**，所以範例輸出目錄中會看到 `checkpoint-225/`。
-- `--save_steps 200` 因此會在訓練中途寫出檢查點。
-
-> **實作提醒：** 在此版本的 `train.py` 中，`--warmup_ratio` 是以數值形式傳給 `SFTConfig(warmup_steps=...)`（預設 `0.03`）。請把它當成一個固定的小暖機值，不要假設它代表「全部步數的 3%」。
-
-### 推論時會發生什麼
-
-推論不會修改權重。它載入同一個基底模型，接上儲存的適配器，然後重複前面的 token 迴圈。
+| 範例 | 你 JSONL 中的一筆問答記錄 | `dataset_path` |
+| Token | 分詞後的一段文字 | `max_seq_length` |
+| 批次（Batch） | 一次前向傳播中一起處理的範例 | `per_device_batch_size` |
+| 累積（Accumulation） | 在一次權重更新前累積多個小批次 | `gradient_accum_steps` |
+| 有效批次 | `per_device_batch_size × gradient_accum_steps × GPU 數量` | 推導而得 |
+| Epoch | 對訓練分割完整跑過一輪 | `num_epochs` / `--epochs` |
+| 學習率 | 每次權重更新的幅度 | `learning_rate` / `--lr` |
+| Warmup | 一開始學習率逐步攀升的小階段 | `warmup_ratio` |
+| 種子（Seed） | 讓分割與初始化可以重現 | `seed` |
+| 評測分割 | 不參與訓練、用來挑選最佳檢查點的範例 | `test_split` |
 
 ```mermaid
 sequenceDiagram
-    participant You as 你
+    participant Data as Dataset
+    participant T as SFTTrainer
+    participant Opt as Optimizer
+    Data->>T: 1,252 records, 5% held out
+    Note over Data: ~1,189 training examples
+    loop Each micro-batch
+        Data->>T: 2 examples (per_device_batch_size 2)
+        T->>T: forward + loss
+    end
+    Note over T: 8 micro-batches accumulated
+    T->>Opt: one optimizer.step() (effective batch 16)
+    Opt-->>T: weights updated
+    Note over T: ~75 steps per epoch × 3 epochs ≈ 225 steps
+```
+
+以下是使用內附臺師大資料與後述 12 GB / 4B 設定的實際計算：
+
+- 1,252 筆記錄，保留 5% → 約 1,189 筆訓練範例。
+- `per_device_batch_size 2 × gradient_accum_steps 8` → 有效批次 16。
+- 每個 epoch 約 75 次優化器步驟；三個 epoch → 約 **225 步驟**，這就是為什麼你會在範例輸出目錄中看到 `checkpoint-225/`。
+- 因此 `--save_steps 200` 會在執行過程中寫入中間檢查點。
+
+> **實作注意：** 在這個版本的 `train.py` 中，`--warmup_ratio` 會以數值形式作為 `warmup_steps` 參數傳給 `SFTConfig`（預設 `0.03`）。請把它當成一個固定的小幅 warmup 值，不要依賴它代表「所有步驟的 3%」。
+
+### 推論時會發生什麼事
+
+推論永遠不會修改權重。它載入同一個基礎模型，接上儲存的 adapter，然後不斷重複前面展示的 token 迴圈。
+
+```mermaid
+sequenceDiagram
+    participant You
     participant I as inference.py
     participant D as device_utils
-    participant B as 基底模型
+    participant B as Base model
     participant P as PeftModel
-    participant T as 分詞器
+    participant T as Tokenizer
 
     You->>I: --mode finetuned --model_id ... --adapter_path ...
     I->>D: resolve_device()
-    I->>T: 載入分詞器
-    I->>B: 載入基底模型（CUDA 預設 NF4）
+    I->>T: load tokenizer
+    I->>B: load base model (NF4 on CUDA by default)
     I->>P: PeftModel.from_pretrained(base, adapter)
-    P-->>I: 即時套用 LoRA 的模型
-    loop 每個提示詞
-        You->>I: "You: 你的問題"
+    P-->>I: model with LoRA applied on the fly
+    loop Each prompt
+        You->>I: "You: your question"
         I->>T: apply_chat_template(add_generation_prompt=True)
-        T-->>I: 提示詞 ID
+        T-->>I: prompt IDs
         I->>P: generate(max_new_tokens, temperature, top_p)
-        P-->>I: 生成的 ID
+        P-->>I: generated IDs
         I->>T: decode(skip_special_tokens=True)
-        T-->>You: 回答
+        T-->>You: answer
     end
 ```
 
-`--mode compare` 只載入一次基底模型，再在其上套用適配器，對每個提示詞同時印出兩種回答，讓你不必啟動第二個行程就能看出微調是否有幫助。
+`--mode compare` 只載入一次基礎模型，再把 adapter 疊上去，然後對每個提示詞印出兩個回答。這讓「微調有沒有幫助？」變得一目了然，不必再開第二個程序。
 
-若 `--adapter_path` 指向的目錄沒有 `adapter_config.json`，腳本會尋找 `checkpoint-*` 子目錄，並選出編號最大且含有適配器的那一個。
+如果 `--adapter_path` 是一個沒有 `adapter_config.json` 的目錄，腳本會尋找 `checkpoint-*` 子目錄，並挑選編號最大且含有 adapter 的那一個。
 
 ### 臺師大評測如何運作
 
-訓練損失只告訴你模型多擬合訓練資料，**不能**告訴你回答是否事實正確。[`src/evaluate_ntnu.py`](src/evaluate_ntnu.py) 為此實作了一套小型、離線、由人評分的基準測試。
+訓練損失告訴你模型對訓練範例的擬合程度；它**不會**告訴你答案在事實上是否正確。為此，[`src/evaluate_ntnu.py`](src/evaluate_ntnu.py) 實作了一個小型的離線、人工評分基準測試。
 
-`evaluation/ntnu_qa.jsonl` 恰好包含 **60** 題固定的題目：
+`evaluation/ntnu_qa.jsonl` 包含剛好 **60** 題固定的問題：
 
-| 類別 | 數量 | 測試什麼 |
+| 類別 | 數量 | 測試內容 |
 |---|---|---|
-| `fact` | 40 | 事實型回答；每題都附臺師大官方來源網址與明確評分條件 |
-| `uncertain` | 10 | 條件不足的題目，模型應追問而不該捏造細節 |
-| `general` | 10 | 格式與指令遵循限制 |
+| `fact` | 40 | 事實性答案；每題都有臺師大官方來源網址與明確評分條件 |
+| `uncertain` | 10 | 描述不足的問題，模型應該要求提供更多細節，並拒絕憑空編造 |
+| `general` | 10 | 格式與遵循指示的限制 |
 
-請不要把這些題目放進訓練資料；否則保留題會變成背誦測驗。
+請不要把這些提示詞放進訓練。重複使用它們會讓保留的測試變成背誦檢查。
 
-```mermaid
-flowchart LR
-    A["generate<br/>每個候選模型一個 JSON"] --> B["blind<br/>每個回應檔用 NAME=PATH"]
-    B --> C["人工評分<br/>每題 pass / major / note"]
-    C --> D["score<br/>逐候選計算品質門檻"]
-    D --> E{"通過品質且時間減少 25%？"}
-    E -- "是" --> F["採用候選"]
-    E -- "否" --> G["保留基準線"]
-```
+流程是 `generate` → `blind` → 人工審查 → `score`；步驟 8 會用圖表展示。
 
-- `generate` 使用貪心解碼（`do_sample=False`）與批次處理，輸出可續跑：設定相符的既有檔案會接續已完成的答案。它需要 LoRA 適配器，沒有「只測基底模型」的模式。
-- 每一次 run 都與模型、適配器權重雜湊、題目檔雜湊、生成設定、後端、dtype 與量化旗標綁定。任一項改變都要換新的輸出路徑。
-- `blind` 使用固定種子，為每一題獨立打亂回答順序，並把對照表寫到**另一個 key 檔**，讓評分者無法辨識模型。
-- `score` 只有在候選的 fact 通過數 ≥ `max(34, 兩個基準線)`、uncertain ≥ 8、general ≥ `max(基準線) - 1`，且 major 捏造數為 0 時，才標記 `passes_quality`。基準線本身不適用這個門檻。
+- `generate` 使用貪婪解碼（`do_sample=False`）、批次處理，以及可續寫的輸出：若輸出檔案中已有相符的內容，就會從既有答案繼續。它需要 LoRA adapter；沒有僅限基礎模型的模式。
+- 一次執行會綁定模型、adapter 權重雜湊、題目雜湊、生成設定、後端、dtype 與量化旗標。變更其中任何一項都需要換一個新的輸出路徑。
+- `blind` 使用固定種子，為每一題獨立打亂答案順序，並把對照表寫到**獨立的金鑰檔案**，讓審查者無法辨識是哪個模型。
+- 只有當候選者至少通過 `max(34, 兩個基準)` 題 fact、至少 8 題 uncertain、至少 `max(基準)` - 1 題 general，且沒有重大捏造時，`score` 才會標記它的 `passes_quality`。基準本身不設關卡。
 
 ### 選擇運算後端
 
@@ -348,186 +321,647 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["python scripts/install_deps.py"] --> B{"作業系統與硬體？"}
-    B -- "Apple Silicon macOS" --> C["--backend mps<br/>原生 arm64 Python"]
+    A["python scripts/install_deps.py"] --> B{"Operating system and hardware?"}
+    B -- "Apple Silicon macOS" --> C["--backend mps<br/>native arm64 Python"]
     B -- "NVIDIA CUDA" --> D["--backend cuda<br/>cu128 wheel"]
-    B -- "AMD ROCm" --> E["先裝 AMD wheel，<br/>再 --backend rocm"]
-    B -- "Intel XPU" --> F["驅動 + --backend xpu"]
-    B -- "沒有支援的 GPU" --> G["--backend cpu<br/>僅供冒煙測試"]
-    C --> H["未量化權重"]
-    E --> I{"要 NF4 嗎？"}
-    I -- "是" --> J["--rocm-4bit 與<br/>--load_in_4bit True<br/>（會先驗證核心）"]
-    I -- "否" --> H
-    D --> K["CUDA 預設 NF4"]
+    B -- "AMD ROCm" --> E["AMD wheel first,<br/>then --backend rocm"]
+    B -- "Intel XPU" --> F["driver + --backend xpu"]
+    B -- "No supported GPU" --> G["--backend cpu<br/>smoke tests only"]
+    C --> H["Unquantized weights"]
+    E --> I{"NF4 wanted?"}
+    I -- "Yes" --> J["--rocm-4bit and<br/>--load_in_4bit True<br/>(preflight checked)"]
+    I -- "No" --> H
+    D --> K["NF4 by default on CUDA"]
     F --> H
-    G --> L["float32，停用 4-bit"]
+    G --> L["float32, 4-bit disabled"]
 ```
 
-- `auto` 依序嘗試 CUDA、ROCm、MPS、XPU，最後 CPU；`gpu` 用相同順序但要求必須有加速器。明確指定的後端必須可用。
-- MPS 與 XPU 會拒絕 `--load_in_4bit True`；CPU 會印出提示並改用未量化的 `float32`。
-- ROCm NF4 必須主動啟用，並在載入大模型前執行小型 forward/backward 驗證。失敗時會給出明確的退化方式：`--load_in_4bit False`。
+- `auto` 會依序嘗試 CUDA、ROCm、MPS、XPU，最後是 CPU。`gpu` 使用相同的搜尋順序，但若沒有加速器就會失敗。明確指定的後端必須可用。
+- MPS 與 XPU 會拒絕 `--load_in_4bit True`；CPU 會印出提示，並靜默使用未量化的 `float32`。
+- ROCm 的 NF4 是選擇性啟用，並會在載入大型模型前先執行一次小型的前向／反向預檢。失敗時會給出可採取的替代方案：`--load_in_4bit False`。
+- 安裝程式**沒有 ROCm wheel 索引**：若是 AMD GPU，你必須先從 AMD 安裝正確的 PyTorch wheel，再執行 `--backend rocm` 安裝其餘相依套件並驗證裝置。
 
----
+### 為什麼需要 Conda、PyTorch 與 GPU 後端
 
-## 功能特色
+有三層很容易搞混：
 
-- **QLoRA / LoRA 雙模式支援** — NVIDIA CUDA 與相容的 AMD ROCm 可用 4-bit NF4，其他支援的後端可使用未量化權重。
-- **多種資料格式** — ChatML（原生）、Alpaca（`instruction` / `input` / `output`）與純文字；內部都會轉成聊天訊息。
-- **Hugging Face Hub 整合** — 直接從 Hub 載入資料集，並把訓練好的適配器推回 Hub。
-- **思考模式** — 可在訓練與推論時啟用 Qwen3 的 `<think>` 推理標籤。
-- **命令列優先設計** — 所有超參數都是命令列旗標，不需要 YAML。
-- **多種運算後端** — NVIDIA CUDA、AMD ROCm、Apple Metal（MPS）、Intel XPU，以及 float32 CPU 備援。
-- **單檔訓練腳本** — `src/train.py` 依序執行完整 SFT 流程，適合教學與逐行閱讀。
-- **模型檢查** — `src/inspect_model.py` 輸出參數量、詞表大小、嵌入維度與層級結構，無需準備資料集。
-- **分詞器檢查** — `src/inspect_tokenizer.py` 顯示 token 片段、ID 與對應的嵌入向量。
-- **微調前後對比** — 先測試基底模型，再與微調後模型並排比較。
-- **互動式推論** — 預設模型常駐並在使用者輸入迴圈中等待；`--no_interactive` 則執行單次提示後結束。
-- **評估資料分割** — 自動分割訓練／測試集，並依驗證損失挑選最佳模型。
-- **梯度檢查點** — 預設啟用，可降低峰值記憶體。
-- **離線品質基準** — 確定性生成、盲評，以及針對內附臺師大題目集的明確品質門檻。
-
----
-
-## 硬體需求
-
-| 設定 | 最低 VRAM | 常見 GPU |
+| 層級 | 它是什麼 | 本專案為什麼需要它 |
 |---|---|---|
-| QLoRA 4B（4-bit，batch 1–2） | 約 6–8 GB | RTX 3060 / 4060 / 4070、T4 |
-| QLoRA 9B（4-bit，batch 1） | 約 10–12 GB | RTX 4070 Ti / 5070 Ti（筆電）、3080 12 GB |
-| QLoRA 9B（4-bit，batch 2） | 約 20–24 GB | RTX 4090 / 3090 24 GB、A5000 |
-| LoRA 4B（未量化，batch 1） | 約 12 GB | RTX 3080 / 4070 Ti / 4080、A10 |
-| CPU（未量化，float32） | — | 任何 CPU，但非常慢；僅供冒煙測試 |
+| Conda 環境 | 一個隔離的資料夾，裡面放著一個 Python 直譯器與其套件 | 防止系統 Python 或其他專案弄壞這個專案；也讓 CUDA 與 ROCm 機器能保留各自的 wheel |
+| PyTorch wheel | 針對特定加速器（cu128、ROCm/HIP、XPU、MPS 或 CPU）編譯好的 `torch` 套件 | 若沒有相符的 wheel，即使硬體上確實有 GPU，`torch.cuda.is_available()` 仍會是 false |
+| CUDA / ROCm / Metal | 讓 PyTorch 能啟動 GPU kernel 的供應商執行環境 | 它是 Python 程式碼與 GPU 之間的橋樑；光有驅動程式還不夠 |
 
-上方的 VRAM 數字以 NVIDIA 為例。Apple Silicon 的模型權重、激活值與作業系統共用統一記憶體。測試新機器時可先從 Qwen3.5-0.8B 開始。
+這就是為什麼實作指南會在安裝任何東西**之前**先建立一個名為 `ai` 的環境，並在執行安裝程式時傳入明確的 `--backend`。
 
-訓練、推論、兩個檢查工具與臺師大評測都接受 `--device auto|gpu|cuda|rocm|mps|xpu|cpu`。自動偵測依 CUDA、ROCm、MPS、XPU、CPU 的順序；`gpu` 使用相同順序但要求加速器可用。明確指定的後端必須存在。
+---
 
-訓練與推論在 NVIDIA CUDA 上預設使用 NF4。ROCm 預設未量化，且只有在核心驗證通過後才接受 `--load_in_4bit True`。MPS 與 XPU 使用未量化權重。CPU 使用未量化的 `float32`。兩個檢查工具在所有後端預設都未量化。
+## 零基礎到跑起來：完整實作指南
+
+請依序執行以下步驟。每個步驟都會先說明概念，再給出可以直接貼上的指令。
+
+### 步驟 0 — 先讀這邊：硬體與術語
+
+閱讀本專案不需要 GPU，但要進行有意義的訓練就需要。最低限度可用的配置是：
+
+- **8 GB VRAM**：用於 4B 模型、短序列長度的 QLoRA。
+- **12 GB VRAM**：用於步驟 7 中舒適的 4B 指令。
+- **Apple Silicon**：具統一記憶體，可使用 MPS；請從 `Qwen/Qwen3.5-0.8B` 開始。
+- **僅 CPU**：支援煙霧測試。速度會很慢，不適合正式訓練。
+
+從步驟 1 開始會用到的關鍵術語：
+
+- **SFT** — 監督式微調：給模型看問答對，讓它模仿風格與行為。
+- **LoRA** — 訓練小型附加矩陣，而不是整個模型。
+- **QLoRA** — 在訓練那些小矩陣時，把基礎模型保持在 4-bit NF4。
+- **Adapter（轉接器）** — 訓練後產生的小檔案；若沒有同一個基礎模型 ID，它就無法使用。
+- **後端（Backend）** — 用於張量運算的執行環境：CUDA、ROCm、MPS、XPU 或 CPU。
+- **環境（Environment）** — 這些套件所在的隔離 Python 安裝。
+
+### 步驟 1 — 從零開始安裝 Conda
+
+Conda 會建立隔離的 Python 環境。**請不要**把這些套件裝到你的系統 Python 中：其他專案的 PyTorch wheel、CUDA 版本與 Transformers 版本可能互相衝突。Miniconda 就夠了，不需要 Anaconda。
+
+**Windows**
+
+1. 從 https://docs.conda.io/en/latest/miniconda.html 下載 `Miniconda3-latest-Windows-x86_64.exe`。
+2. 執行安裝程式。可以勾選「Add Miniconda3 to PATH」，或是從開始功能表使用「Anaconda Prompt」。
+3. 開啟新的終端機並驗證：
+
+```powershell
+conda --version
+```
+
+**Linux / macOS**
+
+```bash
+# Linux x86_64
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -b -p "$HOME/miniconda3"
+"$HOME/miniconda3/bin/conda" init bash
+exec bash
+
+# macOS Apple Silicon (arm64)
+curl -L -o ~/miniconda3.sh \
+  https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
+bash ~/miniconda3.sh -b -p "$HOME/miniconda3"
+"$HOME/miniconda3/bin/conda" init zsh
+exec zsh
+```
+
+`conda init` 會把 Conda 加入你的 shell 啟動檔，讓 `conda activate` 在新的終端機中可用。用以下指令驗證：
+
+```bash
+conda --version
+```
+
+### 步驟 2 — 理解 CUDA、ROCm、MPS、XPU 與 CPU
+
+這些是**後端**，不是 Python 的替代品：
+
+| 後端 | 它是什麼 | 為什麼會選它 | 重要限制 |
+|---|---|---|---|
+| **CUDA** | NVIDIA 的平行運算平台與執行環境 | PyTorch 支援最完整；NF4/bitsandbytes 開箱即用 | 需要 NVIDIA 驅動程式與相符的 cu128 PyTorch wheel |
+| **ROCm** | AMD 開源的 GPU 運算堆疊（HIP 是其類似 CUDA 的 API） | 使用 AMD GPU | wheel 必須與 ROCm 版本、GPU 型號及作業系統相符。本安裝程式**不會**幫你下載它 |
+| **MPS** | Apple Metal Performance Shaders | Apple Silicon Mac | 需要原生 arm64 Python；不支援 4-bit 載入 |
+| **XPU** | PyTorch 中的 Intel GPU 支援 | Intel Arc / Data Center GPU | 需要 Intel 驅動程式與 XPU wheel；不支援 4-bit 載入 |
+| **CPU** | 純處理器執行 | 煙霧測試與除錯 | 對 4B 以上模型很慢；4-bit 會停用並改用 `float32` |
+
+檢查你的機器實際上有什麼：
+
+```bash
+# NVIDIA only
+nvidia-smi
+
+# Inside the conda environment, after installing PyTorch
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.version.hip)"
+```
+
+驅動程式與 PyTorch wheel 是兩回事。即使 `nvidia-smi` 顯示 GPU 正常運作，若 PyTorch 是從錯誤的索引安裝的，`torch.cuda.is_available()` 仍會是 `False`。一個環境只能放一個 PyTorch wheel，所以請把 CUDA 與 ROCm 環境分開。
+
+### 步驟 3 — 建立 `ai` Conda 環境
+
+```bash
+conda create -n ai python=3.11 -y
+conda activate ai
+python --version
+```
+
+Python 3.11 對目前的 PyTorch、Transformers、TRL 與 PEFT 版本來說是安全的選擇。每個新終端機都會從 `base` 環境開始，所以每次都要再執行一次 `conda activate ai`。若你之前用過名為 `finetune` 的環境，可以用 `conda rename -n finetune ai` 重新命名（如果你的 conda 支援），或直接建立 `ai` 並啟用它。
+
+### 步驟 4 — 安裝相依套件並驗證 PyTorch
+
+`scripts/install_deps.py` 會做四件事：
+
+1. 根據 `--backend` 選擇 PyTorch wheel 索引（CUDA → cu128、XPU → xpu、CPU → cpu；MPS 與 macOS CPU 使用 PyPI；ROCm 不安裝 wheel，並預期 AMD 的 wheel 已事先裝好）。
+2. 在選定的裝置上執行真正的張量運算，並讀回實際安裝的 torch 版本。
+3. 在 CUDA 上安裝 `requirements.txt`，其他後端則安裝 `requirements-common.txt`，然後重新鎖定 `torch==<verified version>`，避免 pip 悄悄換掉供應商的 wheel。
+4. 只有在 `--rocm-4bit` 時才加入 `bitsandbytes>=0.50.0`。
+
+在 wheel 安裝期間使用的 `-c requirements-common.txt` 是**約束條件**（它限制 `torch>=2.4.0,<2.12`），不是要把每個套件都裝兩次。
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Installer as install_deps.py
+    participant Pip
+    participant Torch as PyTorch device
+    You->>Installer: --backend cuda / rocm / mps / xpu / cpu
+    Installer->>Pip: install torch from backend index (except ROCm)
+    Pip-->>Installer: torch installed
+    Installer->>Torch: run ones(1, device) + 1 == 2
+    Torch-->>Installer: verified + exact version
+    Installer->>Pip: install requirements and pin torch==exact version
+    Installer->>Pip: optional bitsandbytes for ROCm 4-bit
+    Installer-->>You: Verified PyTorch ... on ...
+```
+
+貼上對應你平台的指令：
+
+```bash
+# NVIDIA CUDA (Linux / Windows Git Bash)
+python scripts/install_deps.py --backend cuda
+
+# AMD ROCm: install the AMD PyTorch wheel FIRST, then:
+python scripts/install_deps.py --backend rocm
+python scripts/install_deps.py --backend rocm --rocm-4bit   # optional NF4 support
+
+# Apple Silicon (native arm64 Python)
+bash scripts/install_deps.sh --backend mps
+
+# Intel XPU
+python scripts/install_deps.py --backend xpu
+
+# CPU only
+python scripts/install_deps.py --backend cpu
+
+# Windows PowerShell
+powershell -File scripts/install_deps.ps1 -Backend cuda
+powershell -File scripts/install_deps.ps1 -Backend rocm -Rocm4Bit
+```
+
+> **ROCm 警告：** `install_deps.py` 刻意略過 ROCm 的 wheel 下載，因為 AMD 的 wheel 與 GPU／OS／ROCm 版本有關。如果你在還沒安裝正確 wheel 前就執行 `--backend rocm`，驗證會失敗。請先依照 AMD 官方的 ROCm PyTorch 安裝指南，針對你的確切配置完成安裝。
+
+驗證安裝結果：
+
+```bash
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+python src/inspect_model.py --model_id Qwen/Qwen3.5-0.8B --device cpu --no_load
+python -m unittest discover -s tests -v
+```
+
+最後一個指令會執行九項後端選擇測試，應該以 `OK` 結束。
+
+### 步驟 5 — 選擇模型（以及原因）
+
+**模型 ID** 是 Hugging Face 的儲存庫名稱。它在訓練與推論時必須完全相同，因為分詞器、聊天範本與詞彙表都屬於該模型。程式碼中的預設值是 `Qwen/Qwen3.5-0.8B`，讓煙霧測試保持輕量；實際的 GPU 工作通常會用 `Qwen/Qwen3.5-4B`。
+
+| 如果你有 | 從這裡開始 | 原因 |
+|---|---|---|
+| 只有 CPU | `Qwen/Qwen3.5-0.8B`、`--device cpu`、`--load_in_4bit False` | 小到足以跑完煙霧測試 |
+| 8 GB NVIDIA VRAM | `Qwen/Qwen3.5-4B`、NF4、短序列 | 4-bit 基礎權重放得下 |
+| 12–16 GB NVIDIA VRAM | `Qwen/Qwen3.5-4B`、NF4、batch 2 | 品質與記憶體的最佳平衡 |
+| 12 GB 以上且想要更大容量 | `Qwen/Qwen3.5-9B`、NF4、batch 1 | 需要謹慎設定序列長度 |
+| Apple Silicon | `Qwen/Qwen3.5-0.8B` 或 `2B`、MPS、未量化 | MPS 不支援 4-bit 載入 |
+
+完整規格與官方連結請見[模型選型](#模型選型qwen35-與-qwen3)。
+
+### 步驟 6 — 用 ChatGPT 建立 SFT 資料集
+
+SFT 需要**成對的範例**：一個真實的使用者問題，以及理想的 assistant 回答。這裡的原生格式是 ChatML，每行一個 JSON 物件：
+
+```json
+{"messages":[{"role":"user","content":"問題"},{"role":"assistant","content":"回答"}]}
+```
+
+你可以用 ChatGPT 或其他 LLM 產生初稿，但必須驗證它。語言模型能寫出流暢且看似合理的捏造內容；如果你拿捏造的地址或期限來訓練，adapter 就會把它當成事實學起來。
+
+#### 提示詞 1：產生中文問答對
+
+把下面這段貼到 ChatGPT，並替換最後一行的主題：
+
+```text
+你是一位資料標註員，正在為「監督式微調（SFT）」製作訓練資料。
+請針對下面指定主題，產生 20 筆繁體中文問答對。
+
+硬性規則：
+1. 問題要像真實使用者會問的話；答案要簡潔、完整、可查證。
+2. 絕對不要捏造地址、電話、期限、金額、人名、法規或制度。不確定就跳過該筆，不要猜。
+3. 只輸出純 JSONL：每一行一個 JSON 物件，不要輸出任何說明文字，不要加 markdown 程式碼區塊。
+4. 每行格式固定為：
+{"messages":[{"role":"user","content":"問題"},{"role":"assistant","content":"回答"}]}
+5. messages 陣列必須恰好 2 個元素，role 依序為 user、assistant，content 皆為非空白字串。
+6. 20 筆的主題要彼此不重複。
+
+主題：〈在這裡填入主題，例如：國立臺灣師範大學的入學申請流程〉
+```
+
+#### 提示詞 2：驗證與除錯 JSONL
+
+在模型回傳初稿後貼上這段：
+
+```text
+你是 JSONL 驗證器。我會貼上一段 JSONL，請逐行檢查，
+只輸出一個 JSON 陣列，元素格式：{"line":<行號>,"ok":true/false,"reason":"..."}
+不要修改我的內容，只回報問題。
+
+檢查規則：
+1. 每行必須是合法 JSON 物件。
+2. 必須有 messages 欄位，且為陣列、長度恰好 2。
+3. messages[0].role == "user"，messages[1].role == "assistant"。
+4. 兩個 content 都是非空白字串。
+5. 若某行有額外欄位（例如 source），標記 ok=true 但於 reason 註明「額外欄位會被訓練器忽略」。
+
+以下是待檢查的 JSONL：
+〈貼上 JSONL〉
+```
+
+```mermaid
+flowchart LR
+    A["Pick a narrow topic"] --> B["Prompt 1: generate Q and A pairs"]
+    B --> C["Remove markdown fences"]
+    C --> D["Prompt 2: validate structure"]
+    D --> E["Human fact-check against official sources"]
+    E --> F["data/my_dataset.jsonl"]
+    F --> G["src/train.py --dataset_format chat"]
+```
+
+#### 儲存並驗證 JSONL
+
+1. 把清理後的輸出貼到 `data/my_dataset.jsonl`。如果 ChatGPT 用 JSON 程式碼區塊包住了它，請把第一行與最後一行刪掉。
+2. 在本機驗證，不要只在聊天視窗中檢查：
+
+```bash
+python - <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path('data/my_dataset.jsonl')
+bad = []
+for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+    if not line.strip():
+        continue
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError as exc:
+        bad.append((line_no, f'JSON error: {exc}'))
+        continue
+    messages = record.get('messages')
+    if not isinstance(messages, list) or len(messages) != 2:
+        bad.append((line_no, 'messages must be a list of length 2'))
+        continue
+    if [m.get('role') for m in messages] != ['user', 'assistant']:
+        bad.append((line_no, 'roles must be user then assistant'))
+        continue
+    if any(not isinstance(m.get('content'), str) or not m['content'].strip() for m in messages):
+        bad.append((line_no, 'content must be a non-empty string'))
+
+if bad:
+    for item in bad[:20]:
+        print(item)
+    sys.exit(1)
+print(f'OK: {path}')
+PY
+```
+
+3. 對內附檔案執行同一個驗證器，看看什麼是已知正常的範例：`data/ntnu_dataset.jsonl` 有 1,252 筆有效記錄。
+
+#### 幻覺與事實查核
+
+**格式正確不代表事實正確。** 提示詞能減少編造的細節，但無法完全消除。訓練前請：
+
+- 逐一以官方網站核對每個地址、電話號碼、期限、金額、人名、規則與法規。
+- 把來源網址放在另一個檔案中，例如 `data/my_dataset.sources.json`；訓練器會忽略額外的鍵，但這個檔案能給你稽核軌跡。
+- 優先選擇範圍狹窄、可查證的主題。「某所大學的入學常見問題」比「所有關於台灣的事」安全。
+- 不要把 `evaluation/ntnu_qa.jsonl` 放進訓練。那 60 題是保留來評測的。
+
+若是講求事實的任務，請搭配 ChatML 資料加入 `--assistant_only_loss`，這樣模型就不會被訓練成把問題文字當成答案來重複。
+
+資料量建議：
+
+| 範例數 | 建議做法 | 要調整的旗標 |
+|---|---|---|
+| < 500 | 短程煙霧測試，檢查是否過擬合 | `--num_epochs 1`、`--learning_rate 1e-4` |
+| 500–5,000 | 一般 LoRA 訓練 | 預設值就合理 |
+| 5,000–30,000 | 訓練久一點、epoch 少一點 | `--num_epochs 2`、`--learning_rate 1.5e-4` |
+| 30,000+ | 更大容量與檢查點 | `--lora_r 32`、`--lora_alpha 64`、`--save_steps 300` |
+
+### 步驟 7 — 使用 `src/train.py` 進行訓練
+
+腳本路徑是 `src/train.py`；儲存庫根目錄沒有 `train.py`。`--load_in_4bit` 只接受 `True` 或 `False`。`--device` 接受 `auto|gpu|cuda|rocm|mps|xpu|cpu`。
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant T as src/train.py
+    participant D as device_utils
+    participant M as model_utils
+    participant P as PEFT
+    participant Data as Dataset / SFTTrainer
+    participant Disk
+
+    You->>T: python src/train.py --dataset_path ...
+    T->>T: parse_args(), set_seed(), fix SSL certs
+    T->>D: resolve_device(training=True)
+    D-->>T: backend, torch device, dtype, NF4 flag
+    T->>M: load_tokenizer(), load_base_model()
+    M-->>T: frozen base model on the chosen device
+    T->>P: get_peft_model(LoraConfig(...))
+    P-->>T: base frozen, LoRA matrices trainable
+    T->>Data: load JSON / JSONL / directory / Hub
+    T->>Data: apply template, train/test split
+    T->>Data: SFTConfig + SFTTrainer
+    loop Every optimizer step
+        Data->>Data: forward pass on a micro-batch
+        Data->>P: backward pass (LoRA gradients)
+        Data->>P: optimizer.step()
+    end
+    Data-->>T: training metrics and best checkpoint
+    T->>Disk: save adapter and tokenizer
+```
+
+#### 依 VRAM 可直接複製的指令
+
+**12 GB NVIDIA、4B 模型** — 建議作為第一次正式訓練：
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
+  --max_seq_length 2048 --num_epochs 3 \
+  --per_device_batch_size 2 --gradient_accum_steps 8 \
+  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
+  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 200 \
+  --output_dir ./models/ntnu/gpu-12gb-4b
+```
+
+**4B 單一 epoch 煙霧測試** — 在長時間訓練前驗證流程：
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
+  --max_seq_length 2048 --num_epochs 1 \
+  --per_device_batch_size 1 --gradient_accum_steps 8 \
+  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
+  --test_split 0.05 --logging_steps 10 --save_steps 200 \
+  --output_dir ./models/ntnu/smoke-4b
+```
+
+**CPU 煙霧測試** — 沒有 GPU 也能跑：
+
+```bash
+python src/train.py \
+  --model_id Qwen/Qwen3.5-0.8B \
+  --dataset_path ./data/ntnu_dataset.jsonl \
+  --dataset_format chat \
+  --device cpu --load_in_4bit False --torch_dtype float32 \
+  --max_seq_length 512 --num_epochs 1 \
+  --per_device_batch_size 1 --gradient_accum_steps 4 \
+  --learning_rate 2e-4 --lora_r 8 --lora_alpha 16 --lora_dropout 0.05 \
+  --test_split 0.05 --logging_steps 5 --save_steps 50 \
+  --output_dir ./models/ntnu/cpu-smoke
+```
+
+其他 VRAM 情況使用與 12 GB / 4B 指令相同的旗標，只改這些地方：
+
+| 情況 | `--model_id` | `--max_seq_length` | batch | accum | `lora_r/alpha` | `--save_steps` | `--output_dir` |
+|---|---|---|---|---|---|---|---|
+| 8 GB NVIDIA | `Qwen/Qwen3.5-4B` | 2048 | 1 | 16 | 16/32 | 200 | `./models/ntnu/gpu-8gb-4b` |
+| 12 GB NVIDIA、9B | `Qwen/Qwen3.5-9B` | 1536 | 1 | 16 | 16/32 | 250 | `./models/ntnu/gpu-12gb-9b` |
+| 12 GB NVIDIA、9B 較長 | `Qwen/Qwen3.5-9B` | 2048 | 1 | 16 | 16/32，加上 `--target_modules q_proj,k_proj,v_proj,o_proj` | 250 | `./models/ntnu/gpu-12gb-9b-long` |
+| 16 GB NVIDIA、9B | `Qwen/Qwen3.5-9B` | 2048 | 1 | 16 | 32/64 | 300 | `./models/ntnu/gpu-16gb-9b` |
+| 24 GB NVIDIA、4B | `Qwen/Qwen3.5-4B` | 4096 | 2 | 8 | 32/64 | 300 | `./models/ntnu/gpu-24gb-4b` |
+| 24 GB NVIDIA、9B | `Qwen/Qwen3.5-9B` | 2048 | 2 | 8 | 32/64 | 300 | `./models/ntnu/gpu-24gb-9b` |
+| 9B 煙霧測試 | `Qwen/Qwen3.5-9B` | 1536 | 1 | 8 | 16/32、`--num_epochs 1` | 200 | `./models/ntnu/smoke-9b` |
+
+#### 超參數說明
+
+- `--max_seq_length` 是 OOM 時第一個要降低的設定。文字越長，注意力所需的記憶體越多，也會有更多範例被截斷。
+- `--per_device_batch_size × --gradient_accum_steps × GPU 數量` 是有效批次。目標是 16–32。不必用到兩張 GPU；一張 GPU 用 `2 × 8 = 16` 就很好。
+- `--learning_rate 2e-4` 是穩健的 LoRA 預設值。較小的資料集適合 `1e-4`。
+- `--num_epochs 3` 是起步設定。注意驗證損失；若評測損失上升，代表過擬合或學習率太高。
+- `--test_split 0.05` 會隱藏 5% 的資料，並在最後還原最佳檢查點。只有純吞吐量基準測試才把它設為 `0`。
+- `--assistant_only_loss` 需要搭配 `--dataset_format chat`，且只監督 assistant 回合。
+- `--gradient_checkpointing` 預設開啟，用速度換取較低的峰值記憶體。
+- `--run_metrics path.json` 會記錄耗時、模型 revision、套件版本、資料集雜湊與 token 統計。
+
+在 Windows 上，若 CUDA 記憶體配置零散：
+
+```powershell
+$env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
+```
+
+若仍然 OOM，先降低 `--max_seq_length`，再限制 `--target_modules q_proj,k_proj,v_proj,o_proj`，然後降低 micro-batch 並提高 `--gradient_accum_steps`，讓有效批次保持不變。
+
+#### 遷移：已移除的捷徑 → 直接指令
+
+具名的捷徑腳本已經移除。請使用上面的直接指令。下表把每個舊捷徑對應到替代方案；本 README 只印出前三個完整指令，其餘請依照「其他 VRAM 情況」表格。
+
+| 已移除的捷徑 | 替代方案 | 主要差異 |
+|---|---|---|
+| `smoke-4b` | 4B 單一 epoch 煙霧指令 | 旗標相同，只有一個 epoch |
+| `smoke-9b` | VRAM 表格中的 9B 列，`--num_epochs 1` | 1536 tokens、batch 1 |
+| `cpu-smoke` | CPU 煙霧指令 | 0.8B、float32、無 4-bit |
+| `gpu-8gb-4b` | 8 GB 列 | batch 1、累積 16 |
+| `gpu-12gb-4b` | 12 GB / 4B 指令 | 完整三個 epoch |
+| `gpu-12gb-9b` | 12 GB / 9B 列 | 1536 tokens |
+| `gpu-12gb-9b-long` | 12 GB / 9B 較長列 | 僅注意力的 LoRA |
+| `gpu-16gb-9b` | 16 GB / 9B 列 | rank 32 |
+| `gpu-24gb-4b` | 24 GB / 4B 列 | 4096 tokens、rank 32 |
+| `gpu-24gb-9b` | 24 GB / 9B 列 | batch 2、rank 32 |
+| `ntnu-win-baseline` | 請見[重現性](#重現性原生-windows-臺師大基準測試) | 4B NF4、batch 2、3 epochs、2048 tokens |
+| `ntnu-win-qwen35-4b` | 請見[重現性](#重現性原生-windows-臺師大基準測試) | 4B NF4、batch 4、2 epochs、512 tokens |
+| `ntnu-win-qwen3-4b` | 請見[重現性](#重現性原生-windows-臺師大基準測試) | Qwen3-4B-Instruct-2507、batch 4 |
+| `ntnu-win-qwen35-2b` | 請見[重現性](#重現性原生-windows-臺師大基準測試) | 2B 未量化、batch 8 |
+
+如果你用過名為 `finetune` 的環境，從現在開始請執行 `conda activate ai`。
+
+### 步驟 8 — 推論與評測
+
+```mermaid
+flowchart LR
+    A["Train adapter"] --> B["src/inference.py base"]
+    A --> C["src/inference.py finetuned"]
+    B --> D["Compare answers side by side"]
+    C --> D
+    A --> E["evaluate_ntnu.py generate"]
+    E --> F["blind: shuffle + separate key"]
+    F --> G["Human review"]
+    G --> H["score: quality gates"]
+```
+
+單次推論在使用 `--no_interactive` 時需要非空的 `--prompt`；沒有內建的測試提示詞。
+
+```bash
+# Base model before training
+python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
+
+# Fine-tuned adapter
+python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --prompt "台灣師範大學的地址是什麼" --no_interactive
+
+# Side-by-side comparison
+python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --load_in_4bit True \
+  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
+```
+
+若沒有 `--no_interactive`，腳本會在回答完選用的 `--prompt` 後開啟互動迴圈。輸入 `quit`、`exit`、`q`，或按 Ctrl+C 離開。
+
+若為 Qwen3.5 思考模式，請加上 `--use_thinking True`。Qwen3.5 不支援 Qwen3 的 `/think` 與 `/nothink` 軟開關；這個 CLI 旗標會把 `chat_template_kwargs={"enable_thinking": true}` 傳給分詞器。
+
+執行離線臺師大評測：
+
+```bash
+python src/evaluate_ntnu.py generate \
+  --model_id Qwen/Qwen3.5-4B \
+  --adapter_path ./models/ntnu/gpu-12gb-4b \
+  --output ./models/ntnu/candidate.json
+
+python src/evaluate_ntnu.py blind \
+  baseline=./models/ntnu/baseline.json candidate=./models/ntnu/candidate.json \
+  --output ./models/ntnu/review.json \
+  --key ./models/ntnu/key.json
+
+python src/evaluate_ntnu.py score \
+  --review ./models/ntnu/review.json \
+  --key ./models/ntnu/key.json \
+  --baselines baseline1 baseline2 \
+  --output ./models/ntnu/score.json
+```
+
+`--baselines` 的名稱必須與 `blind` 步驟中使用的名稱相符。`generate` 需要 adapter，並會強制使用 BF16 權重；若你需要控制權重格式，請明確使用 `--bf16_weights` 或 `--load_in_4bit`。
 
 ---
 
 ## 安裝方式
 
-建議使用 **Python 3.11 或 3.12** 搭配相容的 PyTorch wheel。ROCm 請使用 AMD 版本要求的 Python 版本。每種 PyTorch 後端建議使用獨立環境。
+這是前面已經逐步說明過的內容的精簡版參考。
 
-### 方式一 — Miniconda（建議）
+### 從零開始安裝 Miniconda
 
-```bash
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
+請見[步驟 1](#步驟-1--從零開始安裝-conda) 以取得各平台的安裝程式。Miniconda 就夠了；用 `conda --version` 驗證。
 
-conda create -n finetune python=3.11 -y
-conda activate finetune
-
-# 安裝平台預設後端，或依下表選擇後端
-python scripts/install_deps.py
-```
-
-### 方式二 — venv
+### 建立 `ai` 環境
 
 ```bash
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
-
-python -m venv venv
-source venv/bin/activate        # Linux / macOS
-# venv\Scripts\activate         # Windows PowerShell
-
-python scripts/install_deps.py
+conda create -n ai python=3.11 -y
+conda activate ai
+python --version
 ```
 
 ### 安裝並驗證後端
 
-`install_deps.py` 會選擇 PyTorch wheel、執行小型張量運算，並印出目前後端與 PyTorch 版本。預設值為 Apple Silicon macOS 上的 MPS、Intel macOS 上的 CPU，以及 Windows / Linux 上的 CUDA。Bash 包裝腳本會轉送 Python 參數；PowerShell 包裝腳本使用 `-Backend` 與 `-Rocm4Bit`。
+`install_deps.py` 使用目前作用的 Python，所以請先啟用 `ai`。Bash 包裝程式會原樣轉送每個旗標；PowerShell 包裝程式則使用 `-Backend` 與 `-Rocm4Bit`。
 
-| 後端 | 在啟用環境中安裝 | 驗證模型工具 |
+| 後端 | 指令 | 安裝程式使用的 wheel 索引 |
 |---|---|---|
-| NVIDIA CUDA（Linux / Windows） | `python scripts/install_deps.py --backend cuda` | `python src/inspect_model.py --device cuda --no_load` |
-| AMD ROCm（Linux / WSL2 / Windows） | 先裝 AMD PyTorch wheel，再執行 `python scripts/install_deps.py --backend rocm` | `python src/inspect_model.py --device rocm --no_load` |
-| Apple M 系列（macOS） | 使用原生 arm64 Python 執行 `bash scripts/install_deps.sh --backend mps` | `python src/inspect_model.py --device mps --no_load` |
-| Intel XPU（Linux / Windows） | 裝好 GPU 驅動後執行 `python scripts/install_deps.py --backend xpu` | `python src/inspect_model.py --device xpu --no_load` |
-| CPU | `python scripts/install_deps.py --backend cpu` | `python src/inspect_model.py --device cpu --no_load` |
+| NVIDIA CUDA | `python scripts/install_deps.py --backend cuda` | `https://download.pytorch.org/whl/cu128` |
+| AMD ROCm | 先安裝 AMD wheel，再執行 `python scripts/install_deps.py --backend rocm` | 無；預期已事先安裝 wheel |
+| Apple Silicon | `bash scripts/install_deps.sh --backend mps` | PyPI，僅限原生 arm64 |
+| Intel XPU | `python scripts/install_deps.py --backend xpu` | `https://download.pytorch.org/whl/xpu` |
+| CPU | `python scripts/install_deps.py --backend cpu` | `https://download.pytorch.org/whl/cpu`，或在 macOS 上使用 PyPI |
+| Windows PowerShell | `powershell -File scripts/install_deps.ps1 -Backend cuda` | 與 `cuda` 相同 |
 
-ROCm 請先確認驅動、GPU 與 PyTorch wheel 相符。AMD NF4 請執行 `python scripts/install_deps.py --backend rocm --rocm-4bit`，或 `powershell -File scripts/install_deps.ps1 -Backend rocm -Rocm4Bit`，並使用與 GPU／ROCm 版本相符的 bitsandbytes。
+安裝程式會驗證真正的張量運算，然後在 CUDA 上安裝 `requirements.txt`、其他環境安裝 `requirements-common.txt`，並重新鎖定它剛剛驗證過的確切 torch 版本。ROCm NF4 需要 `--rocm-4bit`，並會加入 `bitsandbytes>=0.50.0`。
 
-`python -m pip install -r requirements.txt` 仍可用於直接安裝 NVIDIA CUDA 版本。其他後端則由安裝腳本在選擇或驗證 PyTorch 後改用 `requirements-common.txt`。
+`requirements-common.txt` 中的核心套件：
 
-參考資料：[AMD Linux](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html) · [AMD WSL2](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html) · [AMD Windows](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installryz/windows/install-pytorch.html) · [Intel XPU](https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html) · [bitsandbytes ROCm](https://huggingface.co/docs/bitsandbytes/installation#amd-rocm)
-
-核心套件：
-
-| 套件 | requirements 中的約束 | 用途 |
+| 套件 | 最低版本 | 用途 |
 |---|---|---|
-| `torch` | `>=2.4.0,<2.12` | 深度學習框架（`requirements.txt` 使用 cu128 wheel） |
-| `transformers` | `>=5.12.1` | Qwen 模型載入、分詞與訓練 |
-| `peft` | `>=0.13.0` | LoRA / QLoRA 適配器設定 |
-| `trl` | `>=1.6.0` | `SFTTrainer`：助理標籤與 chunked loss |
-| `accelerate` | `>=1.13.0` | Trainer 裝置配置與混合精度 |
-| `bitsandbytes` | CUDA `>=0.46.1`、ROCm `>=0.50.0` | 選擇性 4-bit NF4 量化 |
-| `datasets` | `>=3.0.0` | 資料集載入與處理 |
-| `packaging` | `>=21.0` | PyTorch 版本檢查 |
+| `torch` | `>=2.4.0,<2.12` | 張量運算與 GPU kernel；依後端而異的 wheel |
+| `transformers` | `>=5.12.1` | Qwen 模型、分詞器、聊天範本 |
+| `peft` | `>=0.13.0` | LoRA / QLoRA adapter |
+| `trl` | `>=1.6.0` | `SFTTrainer` |
+| `accelerate` | `>=1.13.0` | 裝置配置與分散式輔助程式 |
+| `datasets` | `>=3.0.0` | 載入 JSON / JSONL / Hub 資料集 |
+| `packaging` | `>=21.0` | PyTorch 版本能力檢查 |
+| `certifi` | `>=2023.7.22` | `model_utils.py` 中 SSL 修復使用的 CA bundle |
 
-可執行與硬體無關的回歸測試：
+`requirements.txt` 另外會設定 cu128 索引，並為 NVIDIA NF4 安裝 `bitsandbytes>=0.46.1`。
 
-```bash
-python -m unittest discover -s tests -v
-```
+官方後端參考資料：
+
+- NVIDIA CUDA: https://developer.nvidia.com/cuda-downloads
+- PyTorch wheels: https://pytorch.org/get-started/locally/
+- AMD ROCm: https://rocm.docs.amd.com/
+- Apple Metal / MPS: https://developer.apple.com/metal/pytorch/
+- Intel XPU: https://pytorch.org/docs/stable/xpu.html
 
 ---
 
-## 快速開始
+## 模型選型：Qwen3.5 與 Qwen3
 
-### 跨平台冒煙測試
+以下官方規格來自連結的 Hugging Face 模型卡（查核日期 2026-11-26）。HF 中繼資料欄記錄的是 Hugging Face 頁面另行揭露的資訊，與模型卡文字不同；這兩種計算方式**不可互換**。專案中的 revision 來自 `models/ntnu/windows-comparison/observations.json`，是本地測試紀錄，不是官方規格。
 
-安裝好後端後，用 Qwen3.5-0.8B 跑一步訓練並重新載入適配器。把 `gpu` 換成 `mps`、`rocm`、`xpu`、`cuda` 或 `cpu` 可明確指定後端。在相容的 AMD GPU 上，於兩個 Python 指令加上 `--load_in_4bit True` 可驗證 NF4。
+| 模型 ID | 官方參數量 | HF 中繼資料 | 上下文長度 | 架構 | 預設思考模式 | 專案 revision |
+|---|---|---|---|---|---|---|
+| `Qwen/Qwen3.5-4B` | 4B | 5B | 262,144; extensible to 1,010,000 | 具視覺編碼器的因果 LM；Gated DeltaNet + 稀疏 MoE | 思考模式（`<think>…</think>`） | `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` |
+| `Qwen/Qwen3.5-2B` | 2B | — | 262,144 | 具視覺編碼器的混合稀疏 MoE | 非思考模式；可啟用思考 | `15852e8c16360a2fea060d615a32b45270f8a8fc` |
+| `Qwen/Qwen3.5-0.8B` | 0.8B | 0.9B | 262,144 | 具視覺編碼器的混合稀疏 MoE | 非思考模式；官方模型卡警告可能出現思考迴圈 | — (code default) |
+| `Qwen/Qwen3.5-9B` | 9B | 10B | 262,144; extensible to 1,010,000 | 具視覺編碼器的混合稀疏 MoE | 思考模式 | — |
+| `Qwen/Qwen3-4B-Instruct-2507` | 4.0B (3.6B non-embedding) | — | 262,144 | 因果 LM；36 層；GQA 32 Q / 8 KV heads | 僅非思考模式 | `cdbee75f17c01a7cc42f958dc650907174af0554` |
 
-```bash
-python -c "from pathlib import Path; p=Path('models/backend-smoke'); p.mkdir(parents=True, exist_ok=True); (p/'train.jsonl').write_bytes(Path('data/ntnu_dataset.jsonl').read_bytes().splitlines(keepends=True)[0])"
+官方模型卡：
 
-python src/train.py --device gpu --dataset_path ./models/backend-smoke/train.jsonl \
-  --num_epochs 1 --test_split 0 --max_seq_length 64 --per_device_batch_size 1 \
-  --gradient_accum_steps 1 --output_dir ./models/backend-smoke/adapter
+- [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)
+- [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)
+- [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)
+- [Qwen3.5-9B](https://huggingface.co/Qwen/Qwen3.5-9B)
+- [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)
 
-python src/inference.py --device gpu --mode finetuned \
-  --adapter_path ./models/backend-smoke/adapter \
-  --prompt "What does a tokenizer do?" --max_new_tokens 32 --no_interactive
-```
+注意事項：
 
-### NVIDIA 4B 預設
+1. 五個模型都採用 `apache-2.0` 授權。文中不主張特定的發布日期；模型卡引用的是 2026 年 2 月，但那不是明確的發布日期。
+2. Qwen3.5 模型**不**正式支援 Qwen3 的 `/think` 與 `/nothink` 軟開關。請透過 `chat_template_kwargs={"enable_thinking": ...}` 控制思考模式，這裡將其暴露為 `--use_thinking True|False`。
+3. Qwen3-4B-Instruct-2507 僅支援非思考模式；傳入 `--use_thinking False` 沒有害處，但沒有必要。
+4. `Qwen/Qwen3.5-0.8B` 是預設值，因為它小到足以跑 CPU 煙霧測試。它並不是用來產生正式結果的建議模型。
+5. 傳給推論的基礎模型 ID 必須與訓練時使用的相同。不會匯出合併後的完整模型。
 
-準備好 CUDA 環境，並用內附完整資料集訓練：
+---
 
-```bash
-# 1. 複製並進入專案
-git clone https://github.com/cw1997/fine-tuning-playground.git
-cd fine-tuning-playground
+## 功能特色
 
-# 2. 建立並啟用環境（或 venv — 見安裝方式）
-conda create -n finetune python=3.11 -y
-conda activate finetune
+- **QLoRA / LoRA 支援** — NVIDIA CUDA 與相容的 AMD ROCm 環境可使用 4-bit NF4，任何支援的後端也可使用未量化的權重。
+- **多種資料格式** — ChatML（原生）、Alpaca（`instruction` / `input` / `output`）與純文字。所有格式在內部都會轉換成聊天訊息。
+- **Hugging Face Hub 整合** — 直接從 Hub 載入資料集，並把訓練好的 adapter 推回去。
+- **思考模式** — 在訓練與推論時，透過聊天範本啟用 Qwen3.5 的 `<think>` 推理。
+- **CLI 優先的設計** — 每個超參數都是命令列旗標；不需要 YAML。
+- **多種運算後端** — NVIDIA CUDA、AMD ROCm、Apple Metal（MPS）、Intel XPU，以及 float32 CPU 備援。
+- **單檔訓練腳本** — `src/train.py` 依序執行完整的 SFT 流程，適合教學與逐行閱讀。
+- **模型檢視** — `src/inspect_model.py` 可在不需要資料集的情況下回報參數量、詞彙表大小、嵌入維度與層級配置。
+- **分詞器檢視** — `src/inspect_tokenizer.py` 會顯示 token 片段、ID 與對應的嵌入向量列。
+- **微調前後比較** — 先測試基礎模型，再與微調後的模型並排比較。
+- **互動式推論** — 模型會保持在記憶體中，並在迴圈中讀取提示詞（預設）；`--no_interactive` 則執行一次提示詞後結束。
+- **評測分割** — 自動切割訓練／測試資料，並依評測損失挑選最佳模型。
+- **梯度檢查點** — 預設啟用，以降低峰值記憶體。
+- **離線品質基準測試** — 針對內附的臺師大題目集提供確定性生成、盲審與明確的品質關卡。
 
-# 3. 安裝並驗證 CUDA
-python scripts/install_deps.py --backend cuda
+---
 
-# 4. 使用內附臺師大資料集（1,252 筆 ChatML 紀錄）訓練
-bash scripts/train_preset.sh gpu-12gb-4b
-# 等效手動指令：
-# python src/train.py --model_id Qwen/Qwen3.5-4B --dataset_path ./data/ntnu_dataset.jsonl \
-#   --output_dir ./models/ntnu/gpu-12gb-4b
+## 硬體需求
 
-# 5. 微調前的基底模型
-python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
-  --prompt "台灣師範大學的地址是什麼" --no_interactive
+| 配置 | 最低 VRAM | 典型 GPU |
+|---|---|---|
+| QLoRA 4B (4-bit, batch size 1–2) | ~6–8 GB | RTX 3060 / 4060 / 4070, T4 |
+| QLoRA 9B (4-bit, batch size 1) | ~10–12 GB | RTX 4070 Ti / 5070 Ti (laptop), 3080 12 GB |
+| QLoRA 9B (4-bit, batch size 2) | ~20–24 GB | RTX 4090 / 3090 24 GB, A5000 |
+| LoRA 4B (unquantized, batch size 1) | ~12 GB | RTX 3080 / 4070 Ti / 4080, A10 |
+| CPU (unquantized, float32) | — | Any CPU, very slow; smoke tests only |
 
-# 6. 微調後的模型
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b \
-  --prompt "台灣師範大學的地址是什麼" --no_interactive
+這些 VRAM 數字是 NVIDIA 的例子。在 Apple Silicon 上，權重、活化值與作業系統共用統一記憶體。檢查新機器時請從 `Qwen3.5-0.8B` 開始。若記憶體不足，先降低 `--max_seq_length`，再動其他設定。
 
-# 7. 互動式對話（輸入 quit / exit / q 結束）
-python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b
-```
+訓練、推論、兩個檢視工具與臺師大評測都接受 `--device auto|gpu|cuda|rocm|mps|xpu|cpu`。自動偵測會依序嘗試 CUDA、ROCm、MPS、XPU，最後是 CPU；`gpu` 需要有可用的 GPU，並使用相同順序。明確指定的後端必須可用。
+
+訓練與推論在 NVIDIA CUDA 上預設使用 NF4。ROCm 預設使用未量化的權重，且只有在其核心預檢通過後才接受 `--load_in_4bit True`。MPS 與 XPU 使用未量化的權重。CPU 使用未量化的 `float32`。兩個檢視工具在所有後端上都預設使用未量化的權重。
 
 ---
 
@@ -535,56 +969,49 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
 
 ```text
 fine-tuning-playground/
-├── requirements.txt                    # NVIDIA cu128 安裝入口
-├── requirements-common.txt             # 共用 Python 依賴
+├── requirements.txt                    # NVIDIA cu128 installation entry point
+├── requirements-common.txt             # Shared Python dependencies
 ├── src/
-│   ├── train.py                        # 完整 SFT 流程（單檔、由上而下）
-│   ├── inference.py                    # base / finetuned / compare + 輸入迴圈
-│   ├── evaluate_ntnu.py                # 確定性生成、盲評、品質評分
-│   ├── device_utils.py                 # 後端選擇、dtype、ROCm NF4 驗證
-│   ├── model_utils.py                  # 共用的分詞器與模型載入工具
-│   ├── inspect_model.py                # 模型內部結構報告
-│   └── inspect_tokenizer.py            # token 片段、ID 與嵌入向量
+│   ├── train.py                        # Full SFT pipeline (single file, top-to-bottom)
+│   ├── inference.py                    # base / finetuned / compare + interactive loop
+│   ├── evaluate_ntnu.py                # Greedy generation, blinding, quality scoring
+│   ├── device_utils.py                 # Backend selection, dtype, ROCm NF4 validation
+│   ├── model_utils.py                  # Shared tokenizer and model loading helpers
+│   ├── inspect_model.py                # Model internals report
+│   └── inspect_tokenizer.py            # Token pieces, IDs, and embedding vectors
 ├── data/
-│   ├── ntnu_dataset.jsonl              # 內附臺師大 ChatML 資料集（1,252 筆）
-│   ├── full_dataset.jsonl              # 臺師大 + 臺灣資料彙整（1,746 筆）
-│   ├── generate_ntnu_dataset.py        # 將 ntnu/ + taiwan/ 彙整成 full_dataset.jsonl
-│   ├── restructure_dataset.py          # 輸出到 data/splits/ 與 data/generated/
-│   ├── ntnu/                           # 整理過的臺師大 JSONL（general、extras）
-│   ├── taiwan/                         # 整理過的臺灣 JSONL（7 類）
-│   └── _archive/                       # 舊版紀錄產生器模組
-├── evaluation/ntnu_qa.jsonl            # 60 題保留題目、評分條件與來源
-├── models/                             # 適配器與基準測試資料（已 gitignore）
+│   ├── ntnu_dataset.jsonl              # Bundled NTNU ChatML dataset (1,252 records)
+│   ├── full_dataset.jsonl              # Aggregated extended dataset (1,746 records)
+│   ├── ntnu/                           # Curated NTNU JSONL files
+│   └── taiwan/                         # Curated Taiwan JSONL files
+├── evaluation/ntnu_qa.jsonl            # 60 held-out prompts, criteria, and sources
+├── models/                             # Adapters and benchmark data (gitignored)
 ├── scripts/
-│   ├── install_deps.py                 # 依後端安裝依賴並檢查裝置
-│   ├── install_deps.sh                 # 安裝器的 Bash 包裝
-│   ├── install_deps.ps1                # 安裝器的 PowerShell 包裝
-│   ├── train_preset.sh                 # Bash 訓練預設
-│   └── train_preset.ps1                # PowerShell 預設 + Windows 臺師大基準
-├── tests/test_device_utils.py          # 後端選擇與量化測試
-├── README.md                           # 本文件的英文版
-└── README.zh-Hant.md                   # 繁體中文文件
+│   ├── install_deps.py                 # Backend-aware installer and device probe
+│   ├── install_deps.sh                 # Bash wrapper for the installer
+│   └── install_deps.ps1                # PowerShell wrapper for the installer
+├── tests/test_device_utils.py          # Backend selection and quantization tests
+├── README.md                           # This file (English)
+└── README.zh-Hant.md                   # Traditional Chinese documentation
 ```
 
-### 各檔案說明
+### 檔案說明
 
-**`src/train.py`** — 單檔完整 SFT 流程：修正 SSL → 解析參數 → 選擇裝置 → 載入分詞器 → 載入基底模型（可選 4-bit）→ 套用 LoRA → 載入並格式化資料 → 設定 `SFTTrainer` → 訓練 → 儲存適配器。所有超參數都是 CLI 旗標。
+**`src/train.py`** — 單一檔案中的完整 SFT 流程：SSL 修復 → 解析 CLI 參數 → 選擇裝置 → 載入分詞器 → 載入基礎模型（可選 4-bit）→ 套用 LoRA → 載入並格式化資料 → 設定 `SFTTrainer` → 訓練 → 儲存 adapter。所有超參數都是 CLI 旗標。
 
-**`src/inference.py`** — 獨立推論腳本，支援 `base`、`finetuned`、`compare` 三種模式。沒有 `--prompt` 時直接進入輸入迴圈（`You:`；輸入 `quit`、`exit`、`q` 或按 Ctrl+C 結束）。有 `--prompt` 時先回答一次，除非加上 `--no_interactive`，否則會繼續進入同一個迴圈。
+**`src/inference.py`** — 以 `base`、`finetuned` 或 `compare` 模式進行獨立推論。若沒有 `--prompt`，它會直接進入互動迴圈（`You:`；輸入 `quit`、`exit` 或 `q`，或按 Ctrl+C 停止）。若有 `--prompt`，它會回答一次，然後除非給了 `--no_interactive`，否則繼續進入同一個迴圈。
 
-**`src/evaluate_ntnu.py`** — 三個子命令。`generate` 為單一模型與適配器產生確定性回答；`blind` 打亂不同命名的 run 的回答並另外儲存對照 key；`score` 對完成的評分套用品質門檻。
+**`src/evaluate_ntnu.py`** — 三個子命令。`generate` 為單一模型與 adapter 寫入確定性的答案；`blind` 會打亂具名執行結果的答案，並把對照表分開儲存；`score` 對完成的審查結果套用品質關卡。
 
-**`src/device_utils.py`** — 解析後端、裝置、dtype 與 NF4 策略，並執行 ROCm NF4 預檢。**`src/model_utils.py`** 放共用的分詞器／模型載入程式、預設模型 ID（`Qwen/Qwen3.5-0.8B`）與 SSL 憑證修正。
+**`src/device_utils.py`** — 解析後端、裝置、dtype 與 NF4 策略，並執行 ROCm NF4 預檢。**`src/model_utils.py`** 則存放共用的分詞器／模型載入程式碼、預設模型 ID（`Qwen/Qwen3.5-0.8B`）與 SSL 憑證修復。
 
-**`src/inspect_model.py`** — 輸出標準化報告：模型設定（詞表、隱藏維度、層數、注意力頭、KV 頭、頭維度、FFN 大小、脈絡、激活函數、RoPE theta、綁定嵌入）、分詞器資訊，以及（除非加 `--no_load`）參數量、嵌入形狀與記憶體估計、dtype 與放置位置。
+**`src/inspect_model.py`** — 印出標準化報告：模型設定（詞彙表、hidden size、層數、heads、KV heads、head dimension、FFN size、context、activation、RoPE theta、tied embeddings）、分詞器中繼資料，以及——除非設定 `--no_load`——參數量、嵌入形狀與記憶體估算、dtype 與配置位置。
 
-**`src/inspect_tokenizer.py`** — 顯示句子如何切成 token、每個 ID，以及從輸入嵌入層取出的向量；也可依字串（`--token`）或 ID（`--token_id`）查詢單一 token。位元組層級 token 會轉成可讀形式（GPT 風格 `Ġ` 前綴會變成空白）。三個參數至少給一個。
+**`src/inspect_tokenizer.py`** — 顯示句子如何被切成 token、每個 token 的 ID，以及它在輸入嵌入層中的向量。至少需要 `--sentence`、`--token` 或 `--token_id` 其中之一。
 
-**`data/`** — `ntnu_dataset.jsonl` 有 1,252 筆關於國立臺灣師範大學的 ChatML 紀錄；`full_dataset.jsonl` 彙整 `ntnu/` 與 `taiwan/` 後共 1,746 筆。`restructure_dataset.py` 會把 `ntnu_dataset.jsonl` 分類寫入 `data/splits/`，並產生臺灣大學與行政區問答到 `data/generated/`；`generate_ntnu_dataset.py` 再把整理過的子目錄彙整成 `full_dataset.jsonl`。`_archive/` 保留舊版產生器供參考。
+**`scripts/install_deps.py` / `.sh` / `.ps1`** — 安裝依後端而異的 PyTorch wheel，用真正的張量運算驗證它，然後安裝其餘的 Python 相依套件。
 
-**`scripts/train_preset.sh` / `scripts/train_preset.ps1`** — 常見 GPU 等級的具名預設。PowerShell 腳本另外定義四個原生 Windows 臺師大比較預設。可用 `DATASET_PATH=...`（Bash）或 `$env:DATASET_PATH = ...`（PowerShell）覆寫資料集。
-
-**`tests/test_device_utils.py`** — 以模擬硬體驗證後端選擇與量化規則；執行方式為 `python -m unittest discover -s tests -v`。
+**`tests/test_device_utils.py`** — 模擬硬體以驗證後端選擇與量化規則；用 `python -m unittest discover -s tests -v` 執行。
 
 ---
 
@@ -594,384 +1021,132 @@ fine-tuning-playground/
 
 | 類別 | 參數 | 預設值 | 說明 |
 |---|---|---|---|
-| **模型** | `--model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face 模型 ID；正式 GPU 訓練請改用 `Qwen/Qwen3.5-4B` 或 `Qwen/Qwen3-4B` |
-| | `--load_in_4bit` | CUDA 上開啟 | `True` / `False`；NF4 QLoRA。相容的 ROCm 需主動開啟；MPS/XPU 會拒絕；CPU 會忽略 |
-| | `--torch_dtype` | `bfloat16` | `bfloat16`、`float16`、`float32`；能力檢查可能改用其他有效 dtype |
+| **模型** | `--model_id` | `Qwen/Qwen3.5-0.8B` | Hugging Face 模型 ID；正式 GPU 訓練請使用 `Qwen/Qwen3.5-4B` 或其他 4B / 9B 模型 |
+| | `--load_in_4bit` | CUDA 上開啟 | `True` / `False`；NF4 QLoRA。在相容的 ROCm 上需選擇性啟用；MPS/XPU 會拒絕；CPU 上忽略 |
+| | `--torch_dtype` | `bfloat16` | `bfloat16`、`float16` 或 `float32`；能力檢查可能會選擇不同的有效 dtype |
 | **LoRA** | `--lora_r` | `16` | LoRA 秩 |
-| | `--lora_alpha` | `32` | LoRA 縮放係數，通常 `2 × r` |
-| | `--lora_dropout` | `0.05` | LoRA 層的 dropout |
+| | `--lora_alpha` | `32` | LoRA 縮放係數，通常為 `2 × r` |
+| | `--lora_dropout` | `0.05` | LoRA 層內的 dropout |
 | | `--target_modules` | `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj` | 以逗號分隔的模組名稱 |
-| **資料** | `--dataset_path` | _(必填)_ | 本機 JSON/JSONL 檔、遞迴掃描 `*.jsonl` 的目錄，或 Hub 資料集名稱。本機不存在的路徑會交給 `load_dataset()` |
+| **資料** | `--dataset_path` | _(必填)_ | 本機 JSON/JSONL 檔案、會遞迴掃描 `*.jsonl` 的目錄，或 Hub 資料集名稱。本機不存在的路徑會被傳給 `load_dataset()` |
 | | `--dataset_format` | `chat` | `chat`、`alpaca` 或 `text` |
-| | `--test_split` | `0.05` | 驗證比例，範圍 `[0, 1)`；`0` 停用評估 |
+| | `--test_split` | `0.05` | 驗證資料比例，範圍 `[0, 1)`；`0` 會停用評測 |
 | | `--seed` | `42` | 分割、初始化與取樣的種子 |
-| | `--max_seq_length` | `4096` | 每筆範例的最大 token 數 |
-| | `--use_thinking` | `False` | 將 `enable_thinking` 傳給對話模板 |
-| **優化** | `--learning_rate`、`--lr` | `2e-4` | 峰值學習率 |
-| | `--num_epochs`、`--epochs` | `3` | 訓練輪次 |
-| | `--per_device_batch_size`、`--batch_size` | `2` | 每裝置 micro-batch |
-| | `--gradient_accum_steps` | `8` | 每次權重更新前累積的 micro-batch 數 |
-| | `--gradient_checkpointing` | `True` | 重新計算激活值以節省記憶體 |
-| | `--group_by_length` | 關閉 | 把長度相近的範例分組（`train_sampling_strategy="group_by_length"`） |
-| | `--assistant_only_loss` | 關閉 | 只監督助理回合與其結束 token；需要 `--dataset_format chat` |
-| | `--loss_type` | TRL 預設 | `nll` 或 `chunked_nll`（降低詞表投影記憶體） |
-| | `--warmup_ratio` | `0.03` | 此版本以數值形式傳入 `SFTConfig(warmup_steps=...)` |
-| | `--logging_steps` | `10` | 每 N 步記錄一次指標 |
-| | `--save_steps` | `200` | `save_strategy="steps"` 時每 N 步存檢查點 |
-| | `--output_dir` | `./models/qwen3-4b-finetuned` | 適配器輸出目錄 |
-| **評估** | `--eval_each_epoch` | 關閉 | 改為每個 epoch 評估並存檔，而非每 `save_steps` |
-| | `--eval_batch_size` | `8` | 每裝置評估 micro-batch |
-| **基準測試** | `--benchmark_steps` | `0` | 計時特定步數；大於 0 時不評估也不輸出適配器 |
-| | `--benchmark_warmup_steps` | `3` | 不計入計時的暖機步數 |
-| | `--run_metrics` | — | JSON 路徑：時間、後端、dtype、NF4、長度、模型修訂與版本 |
+| | `--max_seq_length` | `4096` | 每筆範例的最大 token 長度 |
+| | `--use_thinking` | `False` | 把 `enable_thinking` 傳給聊天範本；請見上方 Qwen3.5 注意事項 |
+| **優化** | `--learning_rate`, `--lr` | `2e-4` | 峰值學習率 |
+| | `--num_epochs`, `--epochs` | `3` | 訓練 epoch 數 |
+| | `--per_device_batch_size`, `--batch_size` | `2` | 每個裝置的 micro-batch |
+| | `--gradient_accum_steps` | `8` | 每次優化器步驟的 micro-batch 數 |
+| | `--gradient_checkpointing` | `True` | 重新計算活化值以節省記憶體 |
+| | `--group_by_length` | off | 把長度相近的範例分組 |
+| | `--assistant_only_loss` | off | 監督 assistant 回合及其回合結束 token；需要 `--dataset_format chat` |
+| | `--loss_type` | TRL 預設值 | `nll` 或 `chunked_nll`（降低詞彙投影所需的記憶體） |
+| | `--warmup_ratio` | `0.03` | 此版本中以數值形式傳給 `SFTConfig(warmup_steps=...)` |
+| | `--logging_steps` | `10` | 每 N 步驟記錄一次指標 |
+| | `--save_steps` | `200` | 當 `save_strategy="steps"` 時，每 N 步驟存一次檢查點 |
+| | `--output_dir` | `./models/qwen3-4b-finetuned` | adapter 輸出目錄 |
+| **評測** | `--eval_each_epoch` | off | 每個 epoch 都評測並儲存，而不是每 `save_steps` 一次 |
+| | `--eval_batch_size` | `8` | 每個裝置的評測 micro-batch |
+| **基準測試** | `--benchmark_steps` | `0` | 計時的優化器步驟；正值會跳過評測與 adapter 匯出 |
+| | `--benchmark_warmup_steps` | `3` | 不計入計時的步驟 |
+| | `--run_metrics` | — | 記錄耗時、後端、dtype、NF4 狀態、長度、revision 與版本的 JSON 路徑 |
 | **硬體** | `--device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
-| **Hub** | `--push_to_hub` | `False` | 訓練後推送適配器與分詞器；與基準模式不相容 |
-| | `--hub_model_id` | `""` | Hub 目標 repository；推送時必填 |
+| **Hub** | `--push_to_hub` | `False` | 訓練後推送 adapter 與分詞器；與基準測試模式不相容 |
+| | `--hub_model_id` | `""` | 目標 Hub 儲存庫；推送時必填 |
 
-`parse_args()` 的驗證規則：步數不可為負、`0 <= test_split < 1`、`0 <= warmup_ratio <= 1`、batch／累積／長度必須為正、`--assistant_only_loss` 需要 chat 格式、`--eval_each_epoch` 需要正的驗證比例，且基準測試不能與 Hub 推送同時使用。
+`parse_args()` 中的驗證規則：步驟數必須非負、`0 <= test_split < 1`、`0 <= warmup_ratio <= 1`、batch size／累積／長度必須為正、`--assistant_only_loss` 需要 chat 格式、`--eval_each_epoch` 需要正的評測分割，且基準測試不能與 Hub 推送合併。
 
 ### 推論（`src/inference.py`）
 
 | 類別 | 參數 | 預設值 | 說明 |
 |---|---|---|---|
-| **模型** | `--model_id` | `Qwen/Qwen3.5-0.8B` | 基底模型；必須與訓練時使用的模型一致 |
+| **模型** | `--model_id` | `Qwen/Qwen3.5-0.8B` | 基礎模型；必須與訓練時使用的模型相同 |
 | | `--mode` | `base` | `base`、`finetuned` 或 `compare` |
-| | `--adapter_path` | — | `finetuned` / `compare` 必填；必要時自動選取最新的 `checkpoint-*` |
-| | `--load_in_4bit` | CUDA 上開啟 | `True` / `False`；NF4 規則與訓練一致 |
-| | `--torch_dtype` | `bfloat16` | 計算用 dtype |
+| | `--adapter_path` | — | `finetuned` 與 `compare` 必填；必要時會自動選擇最新的 `checkpoint-*` |
+| | `--load_in_4bit` | CUDA 上開啟 | `True` / `False`；NF4 規則與訓練相同 |
+| | `--torch_dtype` | `bfloat16` | 計算 dtype |
 | | `--device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
-| **生成** | `--prompt` | — | 進入輸入迴圈前先回答的一個提示詞 |
-| | `--max_new_tokens` | `2048` | 最多生成 token 數 |
-| | `--temperature` | `0.7` | 取樣溫度；`0` 為貪心解碼 |
-| | `--top_p` | `0.9` | nucleus sampling 閾值 |
-| | `--use_thinking` | `False` | 在對話模板中啟用思考模式 |
-| **流程** | `--no_interactive` | 關閉 | 回答一次就結束。**必須搭配非空的 `--prompt`** |
+| **生成** | `--prompt` | — | 在進入互動迴圈前要回答的一個提示詞 |
+| | `--max_new_tokens` | `2048` | 最多生成的 token 數 |
+| | `--temperature` | `0.7` | 取樣溫度；`0` 會選擇貪婪解碼 |
+| | `--top_p` | `0.9` | 核取樣（nucleus sampling）閾值 |
+| | `--use_thinking` | `False` | 在聊天範本中啟用思考模式 |
+| **流程** | `--no_interactive` | off | 執行一次提示詞後結束。**必須提供非空的 `--prompt`** |
 
-沒有 `--prompt` 時，腳本會略過單次測試，直接進入輸入迴圈。`--no_interactive` 但沒有提示詞會觸發參數解析錯誤；`inference.py` 沒有內建測試提示詞。
-
-### 模型檢查（`src/inspect_model.py`）
+### 模型檢視（`src/inspect_model.py`）
 
 | 參數 | 預設值 | 說明 |
 |---|---|---|
-| `--model_id` | `Qwen/Qwen3.5-0.8B` | 要檢查的模型 |
-| `--load_in_4bit` | `False` | 以量化權重載入，查看量化後的參數量 |
+| `--model_id` | `Qwen/Qwen3.5-0.8B` | 要檢視的模型 |
+| `--load_in_4bit` | `False` | 載入量化權重以檢視量化後的參數量 |
 | `--torch_dtype` | `float32` | 載入權重時的計算 dtype |
 | `--device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
-| `--no_load` | 關閉 | 只印設定與分詞器資訊 |
+| `--no_load` | off | 只印出設定與分詞器資訊 |
 
-### 分詞器檢查（`src/inspect_tokenizer.py`）
+### 分詞器檢視（`src/inspect_tokenizer.py`）
 
 | 參數 | 預設值 | 說明 |
 |---|---|---|
-| `--model_id` | `Qwen/Qwen3.5-0.8B` | 要檢查分詞器（與選擇性嵌入向量）的模型 |
-| `--sentence` | — | 將句子切成 token 片段、ID 與向量 |
-| `--token` | — | 查詢單一 token 字串的索引與向量 |
-| `--token_id` | — | 查詢單一 token ID 的字串與向量 |
-| `--vector_limit` | `8` | 每條向量印出的元素數；`0` 表示全部 |
+| `--model_id` | `Qwen/Qwen3.5-0.8B` | 要檢視其分詞器（與選擇性嵌入向量）的模型 |
+| `--sentence` | — | 要切成 token 片段、ID 與向量的句子 |
+| `--token` | — | 查詢一個 token 字串：其索引與向量 |
+| `--token_id` | — | 查詢一個 token ID：其字串與向量 |
+| `--vector_limit` | `8` | 要印出的向量元素數；`0` 會印出整個向量 |
 | `--load_in_4bit` | `False` | 以 4-bit 載入模型 |
 | `--torch_dtype` | `float32` | 載入權重時的計算 dtype |
 | `--device` | `auto` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
-| `--no_model` | 關閉 | 只做分詞與 ID，不載入模型（沒有向量） |
+| `--no_model` | off | 只做分詞與 ID；不計算向量 |
 
-`--sentence`、`--token`、`--token_id` 至少給一個，且 `--vector_limit` 必須非負。
+至少需要 `--sentence`、`--token` 或 `--token_id` 其中之一，且 `--vector_limit` 必須非負。
 
 ### 臺師大評測（`src/evaluate_ntnu.py`）
 
-頂層選項 `--cases`（預設 `evaluation/ntnu_qa.jsonl`）必須寫在子命令**之前**。
+頂層選項：`--cases`（預設 `evaluation/ntnu_qa.jsonl`）必須放在子命令**之前**。
 
 | 子命令 | 參數 | 預設值 | 說明 |
 |---|---|---|---|
-| `generate` | `--model_id` | _(必填)_ | 基底模型 ID |
-| | `--adapter_path` | _(必填)_ | 要評測的適配器 |
+| `generate` | `--model_id` | _(必填)_ | 基礎模型 ID |
+| | `--adapter_path` | _(必填)_ | 要評測的 adapter |
 | | `--device` | `gpu` | `auto`、`gpu`、`cuda`、`rocm`、`mps`、`xpu`、`cpu` |
 | | `--load_in_4bit` | CUDA 上開啟 | 與 `--bf16_weights` 互斥 |
-| | `--bf16_weights` | 關閉 | 未量化 BF16 權重；與 `--load_in_4bit` 互斥 |
-| | `--batch_size` | `4` | 同時生成的提示詞數 |
-| | `--max_new_tokens` | `192` | 回答長度上限 |
-| | `--output` | _(必填)_ | 可續跑的 JSON，含 `run` 中繼資料與 `answers` |
-| `blind` | `NAME=PATH ...` | _(必填)_ | 每個候選或基準線一支命名的回應檔 |
-| | `--output` | _(必填)_ | 打亂後的評閱檔 |
-| | `--key` | _(必填)_ | 題目 ID 對應到 run 名稱的獨立 key 檔 |
-| `score` | `--review` | _(必填)_ | `blind` 產生的評閱檔 |
-| | `--key` | _(必填)_ | `blind` 產生的 key 檔 |
-| | `--baselines` | _(必填)_ | 恰好兩個出現在評閱檔中的基準線名稱 |
-| | `--output` | _(必填)_ | 各 run 的統計與 `passes_quality` 旗標 |
+| | `--bf16_weights` | off | 未量化的 BF16 權重；與 `--load_in_4bit` 互斥 |
+| | `--batch_size` | `4` | 一起生成的提示詞數量 |
+| | `--max_new_tokens` | `192` | 生成內容上限 |
+| | `--output` | _(必填)_ | 可續寫的 JSON，包含 `run` 中繼資料與 `answers` |
+| `blind` | `NAME=PATH ...` | _(必填)_ | 每個候選者或基準各一個具名的回答檔案 |
+| | `--output` | _(必填)_ | 打亂後的審查檔案 |
+| | `--key` | _(必填)_ | 從題目 ID 對應到執行名稱的獨立對照表 |
+| `score` | `--review` | _(必填)_ | 由 `blind` 產生的已審查檔案 |
+| | `--key` | _(必填)_ | 由 `blind` 產生的金鑰檔案 |
+| | `--baselines` | _(必填)_ | 審查檔案中剛好兩個基準名稱 |
+| | `--output` | _(必填)_ | 每個執行的總計與 `passes_quality` 旗標 |
 
-`generate` 內部會把 `torch_dtype` 固定為 `bfloat16`。既有輸出檔只有在記錄的 run 設定相符時才會沿用，否則腳本會報錯並要求新的路徑。
+`generate` 會在內部強制使用 `torch_dtype=bfloat16`。只有當記錄的執行設定相符時才會重用既有的輸出檔案；否則腳本會拋出錯誤，要求換一個新的路徑。
 
-> **提醒：** `src/train.py` 與 `src/inference.py` 的 `--model_id` 預設都是 `Qwen/Qwen3.5-0.8B`，讓 CPU 冒煙測試保持輕量。正式 GPU 訓練請明確傳入 `--model_id Qwen/Qwen3.5-4B`（或其他 4B / 9B 模型），且訓練與推論要一致。
-
----
-
-## 建議訓練預設組合
-
-GPU 預設使用 CUDA 或相容的 ROCm，並需安裝 bitsandbytes。這些預設要求 `bfloat16`、ChatML 格式，且**有效批次大小為 16**。MPS 與 XPU 請使用[快速開始](#快速開始)中的未量化指令。所有標準預設都使用 5% 驗證分割，並依驗證損失保留最佳檢查點。
-
-內附臺師大資料集有 **1,252** 筆，因此標準預設使用 3 個 epoch 與 `lr = 2e-4`。更大的自訂資料請套用[資料集規模指引](#資料集規模指引)。
-
-### 平台與作業系統
-
-| 平台 | 安裝 | 列出預設 | 執行訓練 | 備註 |
-|---|---|---|---|---|
-| **Linux** | `bash scripts/install_deps.sh` | `bash scripts/train_preset.sh --list` | `bash scripts/train_preset.sh gpu-12gb-4b` | 建議使用原生 CUDA |
-| **Apple Silicon macOS** | `bash scripts/install_deps.sh --backend mps` | 同 Linux | [跨平台冒煙測試](#跨平台冒煙測試) | 使用 `--device mps` |
-| **Windows（PowerShell）** | `powershell -File scripts/install_deps.ps1` | `powershell -File scripts/train_preset.ps1 -List` | `powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b` | OOM 時設定 `$env:PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` |
-| **Windows（Git Bash）** | `bash scripts/install_deps.sh` | 同 Linux | 同 Linux | 指令與 Linux 相同 |
-
-兩個腳本都支援以環境變數覆寫 `DATASET_PATH`、`OUTPUT_DIR`、`NUM_EPOCHS`、`LEARNING_RATE`，不需要修改腳本。
-
-```bash
-# 自訂資料集（Linux / Git Bash）
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-
-# 較大資料集 — 減少 epoch（30K+ 筆）
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
-  bash scripts/train_preset.sh gpu-24gb-9b
-
-# 自訂輸出目錄
-OUTPUT_DIR=./models/my-run bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-```powershell
-# 自訂資料集（Windows PowerShell）
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-4b
-
-# 較大資料集 — 減少 epoch
-$env:NUM_EPOCHS = "2"
-$env:LEARNING_RATE = "1.5e-4"
-$env:DATASET_PATH = ".\data\large.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-### VRAM 與模型規模（QLoRA）
-
-以下是套用[資料集規模](#資料集規模指引)調整前的起點。遇到 OOM 時先降低 `--max_seq_length`，再試 `--target_modules q_proj,k_proj,v_proj,o_proj`。
-
-| VRAM | 模型 | Batch | Accum | 有效 Batch | 最大長度 | LoRA r | Epochs | LR | 常見 GPU |
-|---|---|---|---|---|---|---|---|---|---|
-| 6–8 GB | Qwen3.5-4B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 / 4060 / 4070 |
-| 12 GB | Qwen3.5-4B | 2 | 8 | 16 | 2048 | 16 | 3 | 2e-4 | RTX 3060 12 GB / 4070 |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 1536 | 16 | 3 | 2e-4 | RTX 5070 Ti 筆電 |
-| 12 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 16 | 3 | 2e-4 | OOM 時改用僅注意力 LoRA |
-| 16 GB | Qwen3.5-9B | 1 | 16 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4080 16 GB / 4070 Ti Super |
-| 24 GB | Qwen3.5-4B | 2 | 8 | 16 | 4096 | 32 | 3 | 2e-4 | RTX 3090 / 4090 |
-| 24 GB | Qwen3.5-9B | 2 | 8 | 16 | 2048 | 32 | 3 | 2e-4 | RTX 4090 / A5000 |
-| CPU | Qwen3.5-0.8B | 1 | 4 | 4 | 512 | 8 | 1 | 2e-4 | 僅冒煙測試；`--device cpu` |
-
-### 資料集規模指引
-
-在[硬體預設](#vram-與模型規模qlora)之上套用下表。有效批次大小建議維持在 16–32。
-
-| 範例數 | Epochs | 學習率 | LoRA r | test_split | 覆寫方式 | 備註 |
-|---|---|---|---|---|---|---|
-| < 500 | 3–5 | 1e-4 | 16 | 0.10 | `LEARNING_RATE=1e-4 NUM_EPOCHS=5` | 過擬合風險高；監控驗證損失 |
-| 500 – 5,000 | 3 | 2e-4 | 16 | 0.05 | _(預設值)_ | 內附臺師大資料（1,252 筆） |
-| 5,000 – 30,000 | 2–3 | 1.5e-4 – 2e-4 | 32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | 較高 rank 有助於領域適應 |
-| 30,000+ | 1–2 | 1.5e-4 | 16–32 | 0.05 | `NUM_EPOCHS=2 LEARNING_RATE=1.5e-4` | 避免 3 輪以上；注意過擬合 |
-
-以 30K+ 筆資料為例：
-
-```bash
-NUM_EPOCHS=2 LEARNING_RATE=1.5e-4 DATASET_PATH=./data/large.jsonl \
-  bash scripts/train_preset.sh gpu-24gb-9b
-```
-
-### 具名預設組合
-
-以下十個預設在**兩個腳本中都存在**：
-
-| 預設 | 目標硬體 | 模型 | 用途 |
-|---|---|---|---|
-| `smoke-4b` | CUDA 或相容 ROCm | Qwen3.5-4B | 1 輪流程檢查 |
-| `smoke-9b` | 12 GB+ GPU | Qwen3.5-9B | 1 輪流程檢查 |
-| `cpu-smoke` | 僅 CPU | Qwen3.5-0.8B | 沒有 GPU 時驗證安裝 |
-| `gpu-8gb-4b` | 6–8 GB | Qwen3.5-4B | 入門消費級 GPU |
-| `gpu-12gb-4b` | 12 GB | Qwen3.5-4B | 12 GB 上的平衡 4B |
-| `gpu-12gb-9b` | 12 GB 筆電／桌機 | Qwen3.5-9B | 建議用於 RTX 5070 Ti 12 GB 筆電 |
-| `gpu-12gb-9b-long` | 12 GB | Qwen3.5-9B | 2048 token 回答、僅注意力 LoRA |
-| `gpu-16gb-9b` | 16 GB | Qwen3.5-9B | 完整 7 層 LoRA，r=32 |
-| `gpu-24gb-4b` | 24 GB | Qwen3.5-4B | 高品質 4B、4096 token 脈絡 |
-| `gpu-24gb-9b` | 24 GB | Qwen3.5-9B | 建議桌機訓練 9B |
-
-### 預設腳本
-
-選擇性：訓練前降低 Windows / Git Bash 上的 CUDA 記憶體碎片：
-
-```bash
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-```
-
-**Linux / macOS / Git Bash：**
-
-```bash
-bash scripts/train_preset.sh --list
-bash scripts/train_preset.sh smoke-9b
-bash scripts/train_preset.sh gpu-12gb-9b
-DATASET_PATH=./data/my_dataset.jsonl bash scripts/train_preset.sh gpu-24gb-9b
-OUTPUT_DIR=./models/my-run DATASET_PATH=./data/my.jsonl bash scripts/train_preset.sh gpu-12gb-4b
-```
-
-**Windows PowerShell：**
-
-```powershell
-powershell -File scripts/train_preset.ps1 -List
-powershell -File scripts/train_preset.ps1 -Preset smoke-9b
-powershell -File scripts/train_preset.ps1 -Preset gpu-12gb-9b
-$env:DATASET_PATH = ".\data\my_dataset.jsonl"
-powershell -File scripts/train_preset.ps1 -Preset gpu-24gb-9b
-```
-
-### 原生 Windows 臺師大基準測試
-
-這四個預設**只存在於 `scripts/train_preset.ps1`**，Bash 腳本沒有。請使用 CUDA Python 環境。RTX 5070 Ti Laptop 的檢查使用 Python 3.11、PyTorch 2.11.0+cu128、Transformers 5.12.1、TRL 1.6.0、PEFT 0.19.1 與 bitsandbytes 0.49.2。開始前請確認目前 Python 能報告 CUDA。
-
-| 預設 | 模型 | 權重 | Micro-batch × 累積 | Epochs | 序列長度 |
-|---|---|---|---|---|---|
-| `ntnu-win-baseline` | Qwen3.5-4B | NF4 | 2 × 8 | 3 | 2048 |
-| `ntnu-win-qwen35-4b` | Qwen3.5-4B | NF4 | 4 × 4 | 2 | 512 |
-| `ntnu-win-qwen3-4b` | Qwen3-4B-Instruct-2507 | NF4 | 4 × 4 | 2 | 512 |
-| `ntnu-win-qwen35-2b` | Qwen3.5-2B | BF16（不量化） | 8 × 2 | 2 | 512 |
-
-四者都使用有效批次 16、內附 5% 驗證分割、`--loss_type nll` 與 `--run_metrics`。非基準線候選另外使用 `--group_by_length` 與 `--eval_each_epoch`。
-
-已快取的模型修訂：
-
-- `Qwen/Qwen3.5-4B`：`851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`
-- `Qwen/Qwen3-4B-Instruct-2507`：`cdbee75f17c01a7cc42f958dc650907174af0554`
-- `Qwen/Qwen3.5-2B`：`15852e8c16360a2fea060d615a32b45270f8a8fc`
-
-```powershell
-conda activate ai
-python -c "import torch; print(torch.__version__, torch.cuda.get_device_name())"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -List
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-baseline -BenchmarkSteps 10
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/train_preset.ps1 -Preset ntnu-win-qwen3-4b -BenchmarkSteps 10
-```
-
-每次重複執行都應傳入不同的 `-RunMetrics` JSON 路徑。若候選耗盡 GPU 記憶體，先改用 `-Checkpointing True`，必要時再把 `-MicroBatch` 減半；腳本會自動調整累積步數，維持有效批次 16。單步冒煙檢查可用 `-BenchmarkSteps 1 -BenchmarkWarmupSteps 0`。`-AssistantOnly` 啟用助理標籤，`-LossType chunked_nll` 要求 chunked loss。省略 `-BenchmarkSteps` 即為完整訓練；若要比較三輪，設定 `$env:NUM_EPOCHS = "3"` 並換新的 `$env:OUTPUT_DIR`。`-PythonExecutable` 可指定解釋器。基準執行的預設輸出目錄名稱會加上 `-short`。
-
-產生回答時請使用候選實際的模型與權重。2B BF16 候選要加 `--bf16_weights`；互動使用時，把相同模型與適配器傳給 `src/inference.py --mode finetuned`，BF16 則加 `--load_in_4bit False`。
-
-```powershell
-$results = "models/ntnu/windows-comparison"
-$model = "Qwen/Qwen3-4B-Instruct-2507"
-$adapter = "$results/ntnu-win-qwen3-4b"
-python src/evaluate_ntnu.py generate --model_id $model --adapter_path $adapter --output "$results/candidate.json"
-python src/inference.py --mode finetuned --device gpu --model_id $model --adapter_path $adapter
-```
-
-為既有與重新訓練的 4B 基準線分別產生回答，再把三份回應檔交給 `blind`。依每題列出的條件逐一評閱；若捏造了重要事實（例如不存在的資格、期限、金額、地址或指示）請標記 `major`，只有全部條件都滿足時才標記 `pass`。兩個布林值都要填，並在 `note` 說明缺失，然後把評閱檔與獨立的 key 檔交給 `score`。
-
-```powershell
-python src/evaluate_ntnu.py blind "existing=$results/existing.json" "baseline=$results/baseline.json" "candidate=$results/candidate.json" --output "$results/review.json" --key "$results/key.json"
-python src/evaluate_ntnu.py score --review "$results/review.json" --key "$results/key.json" --baselines existing baseline --output "$results/quality.json"
-```
-
-只有通過品質門檻，且完整 warm-cache 執行時間至少縮短 25% 的候選才應採用。比較 metrics 檔中的 `elapsed_seconds`，並另外記錄首次下載模型的時間。為了讓 GPU 計時可比較，請一次只執行一個訓練或推論工作負載。在 Windows 上，若某一步停滯或 CUDA 回報未知錯誤，請在工作管理員檢查專用與共用 GPU 記憶體。
-
-### 各預設的手動命令
-
-若不想透過腳本，可直接複製以下單一指令。
-
-**冒煙測試 — Qwen3.5-4B（任何 GPU）：**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-4B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 1 \
-  --per_device_batch_size 1 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 \
-  --test_split 0.05 --save_steps 200 --output_dir ./models/ntnu/smoke-4b
-```
-
-**12 GB — Qwen3.5-4B + 臺師大資料：**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-4B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 3 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
-  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 200 \
-  --output_dir ./models/ntnu/gpu-12gb-4b
-```
-
-**12 GB 筆電 — Qwen3.5-9B + 臺師大資料：**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 1536 --num_epochs 3 \
-  --per_device_batch_size 1 --gradient_accum_steps 16 \
-  --learning_rate 2e-4 --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
-  --warmup_ratio 0.03 --test_split 0.05 --logging_steps 10 --save_steps 250 \
-  --output_dir ./models/ntnu/gpu-12gb-9b
-```
-
-**24 GB 桌機 — Qwen3.5-9B + 臺師大資料：**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/ntnu_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 3 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 2e-4 --lora_r 32 --lora_alpha 64 --lora_dropout 0.05 \
-  --test_split 0.05 --save_steps 300 --output_dir ./models/ntnu/gpu-24gb-9b
-```
-
-**24 GB 桌機 — 30K+ 自訂資料：**
-
-```bash
-python src/train.py \
-  --model_id Qwen/Qwen3.5-9B \
-  --dataset_path ./data/large_dataset.jsonl \
-  --device gpu --load_in_4bit True --torch_dtype bfloat16 \
-  --max_seq_length 2048 --num_epochs 2 \
-  --per_device_batch_size 2 --gradient_accum_steps 8 \
-  --learning_rate 1.5e-4 --lora_r 32 --lora_alpha 64 --lora_dropout 0.05 \
-  --test_split 0.05 --save_steps 300 --output_dir ./models/custom/gpu-24gb-9b
-```
-
-**訓練後對比：**
-
-```bash
-python src/inference.py \
-  --mode compare --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/ntnu/gpu-12gb-4b \
-  --load_in_4bit True \
-  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
-```
+> **注意：** `src/train.py` 與 `src/inference.py` 預設為 `Qwen/Qwen3.5-0.8B`，讓 CPU 煙霧測試保持輕量。若是 GPU 工作，請對訓練與推論**兩者**都傳入 `--model_id Qwen/Qwen3.5-4B`（或其他 4B / 9B 模型）。
 
 ---
 
 ## 資料格式
 
-三種格式在訓練前都會正規化成聊天訊息：
+三種格式在訓練前都會正規化為聊天訊息。若要用 ChatGPT 產生其中任何一種，請從[步驟 6](#步驟-6--用-chatgpt-建立-sft-資料集) 開始。
 
 ```mermaid
 flowchart LR
-    A["chat：messages"] --> D["共用的訊息清單"]
-    B["alpaca：instruction + input + output"] --> D
-    C["text：ChatML 字串"] --> D
-    D --> E{"--assistant_only_loss？"}
-    E -- "否" --> F["apply_chat_template → text 欄位"]
-    E -- "是" --> G["messages + chat_template_kwargs"]
+    A["chat: messages"] --> D["Common message list"]
+    B["alpaca: instruction + input + output"] --> D
+    C["text: ChatML string"] --> D
+    D --> E{"--assistant_only_loss?"}
+    E -- "No" --> F["apply_chat_template → text column"]
+    E -- "Yes" --> G["messages + chat_template_kwargs"]
     F --> H["SFTTrainer"]
     G --> H
 ```
 
 ### ChatML 格式
 
-Qwen 的原生格式。每個 JSONL 行（或 JSON 陣列元素）都有一個 `messages` 鍵：
+Qwen 的原生格式。每個 JSONL 行（或 JSON 清單項目）都有一個 `messages` 鍵：
 
 ```json
 {
@@ -983,11 +1158,11 @@ Qwen 的原生格式。每個 JSONL 行（或 JSON 陣列元素）都有一個 `
 }
 ```
 
-system 訊息可省略。需要 `--dataset_format chat`（預設值）。這是 `--assistant_only_loss` 唯一接受的格式。
+系統訊息是選用的。需要 `--dataset_format chat`（預設）。這是 `--assistant_only_loss` 唯一接受的格式。
 
 ### Alpaca 格式
 
-三個欄位：`instruction`、`input`、`output`。當 `input` 非空時，會以空行分隔附加在 instruction 之後。
+三個欄位：`instruction`、`input` 與 `output`。當 `input` 非空時，它會被接到 instruction 後面，中間空一行。
 
 ```json
 {
@@ -997,11 +1172,11 @@ system 訊息可省略。需要 `--dataset_format chat`（預設值）。這是 
 }
 ```
 
-需要 `--dataset_format alpaca`。
+需要 `--dataset_format alpaca`。如果你偏好這個結構，就請 ChatGPT 產生這三個鍵，而不是 `messages`。
 
-### 純文字格式
+### Text 格式
 
-單一 `text` 欄位存放完整 ChatML 對話。載入器會以 `<|im_end|>\n<|im_start|>` 切分，並從 user 開始交錯指定 user / assistant 角色：
+一個 `text` 欄位，內容是完整的 ChatML 對話。載入器會以 `<|im_end|>\n<|im_start|>` 分割，並從 user 開始交替 user / assistant 角色：
 
 ```json
 {
@@ -1017,7 +1192,7 @@ system 訊息可省略。需要 `--dataset_format chat`（預設值）。這是 
 
 ### 基本訓練
 
-用本機 JSONL 檔訓練，每行是一筆 ChatML 對話：
+在本機 JSONL 檔案上訓練，其中每一行都是一段 ChatML 對話：
 
 ```bash
 python src/train.py \
@@ -1026,7 +1201,7 @@ python src/train.py \
   --output_dir ./my-finetuned-model
 ```
 
-`--dataset_path` 也接受目錄：底下所有 `*.jsonl` 會被遞迴找到、排序後合併。請注意整棵目錄樹可能合併到重複的紀錄（例如 `ntnu_dataset.jsonl`、`full_dataset.jsonl` 與其分類檔），因此使用內附資料時，建議明確指定單一檔案或整理過的子目錄：
+`--dataset_path` 也接受目錄：其下所有 `*.jsonl` 檔案都會被遞迴找到、排序並合併。請注意，整個目錄樹可能會把重複的同一筆記錄合併進來，因此建議使用明確的訓練檔案或整理過的子目錄：
 
 ```bash
 python src/train.py \
@@ -1035,7 +1210,7 @@ python src/train.py \
   --output_dir ./models/ntnu
 ```
 
-本機不存在的路徑會被視為 Hugging Face 資料集名稱。
+任何本機不存在的路徑都會被當成 Hugging Face 資料集名稱。
 
 ### 使用 Alpaca 資料集訓練
 
@@ -1047,7 +1222,7 @@ python src/train.py \
   --output_dir ./alpaca-finetuned
 ```
 
-### 從 Hugging Face Hub 載入資料集
+### 從 Hugging Face Hub 訓練
 
 ```bash
 python src/train.py \
@@ -1057,50 +1232,40 @@ python src/train.py \
   --output_dir ./dolly-finetuned
 ```
 
-### 推論 — 互動式（預設）
+### 推論 — 互動模式（預設）
 
-模型會保持載入，並在使用者輸入迴圈中等待。於 `You:` 輸入問題；使用 `quit`、`exit`、`q` 或 Ctrl+C 結束。
-
-- **沒有 `--prompt`** — 直接進入輸入迴圈。
-- **有 `--prompt`** — 先回答一次，再繼續進入迴圈。
+模型會保持在記憶體中，並在迴圈中讀取提示詞。在 `You:` 處輸入問題；用 `quit`、`exit`、`q` 或 Ctrl+C 停止。
 
 ```bash
-# 微調後模型 — 互動式對話
+# Fine-tuned model — interactive chat
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
   --adapter_path ./models/ntnu/gpu-12gb-4b
 
-# 基底模型 — 先跑一題，再繼續互動
+# Base model — one prompt, then continue interactively
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
   --prompt "台灣師範大學的地址是什麼"
 
-# 對比模式 — 每輪輸入同時顯示基底與微調後回答
+# Compare mode — each input shows base vs fine-tuned answers
 python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
   --adapter_path ./models/ntnu/gpu-12gb-4b
 ```
 
-### 推論 — 單次執行（`--no_interactive`）
+### 推論 — 單次模式（`--no_interactive`）
 
-適合腳本與比較用途。**此旗標搭配的 `--prompt` 是必填的**；`inference.py` 沒有內建測試提示詞。
+這適合腳本與比較使用。使用這個旗標時**必須提供 `--prompt`**；`inference.py` 沒有內建的測試提示詞。
 
 ```bash
-# 基底模型基準線
 python src/inference.py --mode base --model_id Qwen/Qwen3.5-4B \
   --prompt "台灣師範大學的地址是什麼" --no_interactive
 
-# 微調後模型
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
   --adapter_path ./my-finetuned-model \
   --prompt "台灣師範大學的地址是什麼" --no_interactive
-
-# 並排對比
-python src/inference.py --mode compare --model_id Qwen/Qwen3.5-4B \
-  --adapter_path ./models/my-finetuned-model \
-  --prompt "請簡單介紹國立臺灣師範大學。" --no_interactive
 ```
 
-### 啟用思考模式推論
+### 使用思考模式的推論
 
-傳入 `--use_thinking True` 可啟用 Qwen 的 `<think>` 連鎖思考標籤。除非加上 `--no_interactive`，否則腳本接著會進入輸入迴圈。
+傳入 `--use_thinking True` 以啟用 Qwen3.5 的 `<think>` 標籤。除非設定了 `--no_interactive`，否則腳本之後會繼續進入互動迴圈。
 
 ```bash
 python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
@@ -1109,53 +1274,34 @@ python src/inference.py --mode finetuned --model_id Qwen/Qwen3.5-4B \
   --prompt "台灣師範大學的地址是什麼"
 ```
 
-### 檢查模型
-
-`src/inspect_model.py` 不需資料集就能印出標準化報告：
+### 檢視模型
 
 ```bash
-# 設定 + 分詞器 + 權重（預設）
+# Configuration + tokenizer + weights (default)
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B
 
-# 僅設定 + 分詞器（快速，略過權重下載）
+# Configuration + tokenizer only (fast; skips the weight download)
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --no_load
 
-# 查看量化後的參數量
+# Quantized parameter counts
 python src/inspect_model.py --model_id Qwen/Qwen3.5-4B --load_in_4bit True
 ```
 
-報告包含三節：模型設定、分詞器中繼資料（含特殊 token ID 與對話模板是否存在），以及模型權重（加 `--no_load` 時略過）。
-
-### 檢查分詞器
-
-`src/inspect_tokenizer.py` 顯示 token 片段、ID，以及模型實際讀取的嵌入向量；位元組層級 token 會轉成可讀形式。
+### 檢視分詞器
 
 ```bash
-# 分割繁體中文句子
+# Split a Traditional Chinese sentence
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
   --sentence "請告訴我國立台灣師範大學的具體位置在哪裡？"
 
-# 分割英文句子
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
-  --sentence "Where is the National Taiwan Normal University?"
-
-# 查詢 token 字串 -> ID 與向量
+# Look up a token string and an ID
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "台"
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token "臺"
-
-# 查詢 token ID -> 字串與向量
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B --token_id 120573
 
-# 印出完整向量，而非前八個元素
-python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
-  --sentence "Hello" --vector_limit 0
-
-# 只做分詞與 ID（不下載模型）
+# Tokenization only, no model download
 python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
   --sentence "Hello world" --no_model
 ```
-
-每個 token 的輸出包含文字、ID、shape、dtype、norm、平均值、標準差與數值（數量由 `--vector_limit` 控制）。
 
 ---
 
@@ -1163,7 +1309,7 @@ python src/inspect_tokenizer.py --model_id Qwen/Qwen3.5-0.8B \
 
 ### 自訂 LoRA 目標模組
 
-只對注意力投影套用 LoRA 以節省記憶體：
+把 LoRA 限制在注意力投影層以節省記憶體：
 
 ```bash
 python src/train.py \
@@ -1173,9 +1319,9 @@ python src/train.py \
   --output_dir ./attention-only-lora
 ```
 
-### 推送至 Hugging Face Hub
+### 推送到 Hugging Face Hub
 
-先登入，再傳入兩個旗標：
+先登入，然後傳入兩個旗標：
 
 ```bash
 huggingface-cli login
@@ -1187,11 +1333,11 @@ python src/train.py \
   --hub_model_id your-username/qwen3-4b-finetuned
 ```
 
-推送時 `--hub_model_id` 必填；基準執行不會輸出適配器，因此不能推送。
+推送時 `--hub_model_id` 必填，而基準測試執行無法推送，因為它們不會匯出 adapter。
 
-### 完整精度 LoRA vs QLoRA
+### 全精度 LoRA 與 QLoRA 的比較
 
-QLoRA（4-bit）是 NVIDIA 上的預設。使用未量化 LoRA：
+QLoRA（4-bit）是 NVIDIA 的預設值。使用未量化的 LoRA：
 
 ```bash
 python src/train.py \
@@ -1201,11 +1347,11 @@ python src/train.py \
   --output_dir ./fp-lora-finetuned
 ```
 
-4B 模型約需 12 GB VRAM。記憶體不足時請降低 micro-batch 或 `--max_seq_length`。
+對 4B 模型而言，這大約需要 12 GB VRAM。若記憶體不足，請降低 micro-batch 或 `--max_seq_length`。
 
-### 訓練時啟用思考模式
+### 在訓練時啟用思考模式
 
-若資料集含有推理過程（`<think>...</think>`），可啟用支援思考的對話模板。訓練仍然需要 ChatML 資料；旗標控制模板如何渲染目標。
+如果你的資料集含有推理軌跡（`<think>...</think>`），請啟用支援思考的聊天範本。訓練仍然需要 ChatML 資料；這個旗標控制的是範本如何渲染目標。
 
 ```bash
 python src/train.py \
@@ -1214,9 +1360,9 @@ python src/train.py \
   --output_dir ./thinking-finetuned
 ```
 
-### 測量速度與記憶體
+### 測量速度與記憶體用量
 
-`--benchmark_steps` 會計量暖機後固定步數的時間，且不輸出適配器。搭配 `--run_metrics` 可得到可重現的比較：
+`--benchmark_steps` 會在 warmup 之後，對固定範圍的優化器步驟計時，且不會寫出 adapter。它很適合搭配 `--run_metrics` 進行可重現的比較：
 
 ```bash
 python src/train.py \
@@ -1228,73 +1374,133 @@ python src/train.py \
   --output_dir ./models/benchmarks/nf4
 ```
 
-metrics JSON 記錄所有 CLI 參數、模型修訂與注意力實作、資料集 SHA-256（單一檔案時）、後端、裝置名稱、dtype、NF4 狀態、已安裝套件版本、token 長度統計、各階段時間、trainer 指標、最佳檢查點與驗證損失，以及基準區間的結果。
+指標 JSON 會記錄所有 CLI 參數、模型 revision 與注意力實作、資料集 SHA-256（單一檔案）、後端、裝置名稱、dtype、NF4 狀態、已安裝的套件版本、token 長度統計、各階段耗時、訓練器指標、最佳檢查點與驗證損失，以及基準測試範圍的結果。
+
+---
+
+## 重現性：原生 Windows 臺師大基準測試
+
+四次 Windows 比較執行現在都以單純的 `src/train.py` 指令表示。旗標 `--gradient_checkpointing`、`--loss_type`、`--run_metrics`、`--group_by_length`、`--eval_each_epoch`、`--eval_batch_size`、`--assistant_only_loss`、`--benchmark_steps` 與 `--benchmark_warmup_steps` 都存在於 `train.py` 中。以下版本使用有效批次 16，並指定明確的指標路徑。
+
+記錄的 revision 與指標位於 `models/ntnu/windows-comparison/observations.json`。那邊記錄的套件版本是過去的環境，**不是**安裝需求；請使用 `requirements-common.txt` 中的版本。
+
+```bash
+# Baseline: Qwen3.5-4B, NF4, batch 2 x accum 8, 3 epochs, 2048 tokens
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 3 --learning_rate 2e-4 --max_seq_length 2048 \
+  --per_device_batch_size 2 --gradient_accum_steps 8 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-baseline \
+  --loss_type nll \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-baseline/metrics.json
+
+# Qwen3.5-4B short: batch 4 x accum 4, 2 epochs, 512 tokens
+python src/train.py \
+  --model_id Qwen/Qwen3.5-4B --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 4 --gradient_accum_steps 4 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen35-4b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 4 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen35-4b/metrics.json
+
+# Qwen3-4B-Instruct-2507 short: non-thinking model, same short settings
+python src/train.py \
+  --model_id Qwen/Qwen3-4B-Instruct-2507 --load_in_4bit True \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 4 --gradient_accum_steps 4 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen3-4b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 4 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen3-4b/metrics.json
+
+# Qwen3.5-2B short: unquantized BF16, batch 8 x accum 2
+python src/train.py \
+  --model_id Qwen/Qwen3.5-2B --load_in_4bit False \
+  --dataset_path ./data/ntnu_dataset.jsonl --device gpu \
+  --num_epochs 2 --learning_rate 2e-4 --max_seq_length 512 \
+  --per_device_batch_size 8 --gradient_accum_steps 2 \
+  --gradient_checkpointing True \
+  --output_dir ./models/ntnu/windows-comparison/ntnu-win-qwen35-2b \
+  --loss_type nll --group_by_length --eval_each_epoch --eval_batch_size 8 \
+  --run_metrics ./models/ntnu/windows-comparison/ntnu-win-qwen35-2b/metrics.json
+```
+
+只有在搭配 `--dataset_format chat`（預設）時才加入 `--assistant_only_loss`。若只要計時，請加上 `--benchmark_steps 10 --benchmark_warmup_steps 3`；在該模式下不會匯出 adapter。
 
 ---
 
 ## 輸出產物
 
-一般訓練結束後，`output_dir` 包含：
+一般訓練執行後，`output_dir` 包含：
 
 ```text
 my-finetuned-model/
-├── adapter_config.json          # LoRA 秩、alpha、目標模組、基底模型
-├── adapter_model.safetensors    # 訓練好的 LoRA 權重（數十 MB）
-├── tokenizer.json               # 分詞器詞表
-├── tokenizer_config.json        # 分詞器設定
-├── chat_template.jinja          # 儲存的對話模板（分詞器有提供時）
-├── training_args.bin            # 序列化後的 trainer 參數
-└── checkpoint-*/                 # 若訓練期間到達 save_steps，會有中間檢查點
+├── adapter_config.json          # LoRA rank, alpha, target modules, base model
+├── adapter_model.safetensors    # Trained LoRA weights (tens of MB)
+├── tokenizer.json               # Tokenizer vocabulary
+├── tokenizer_config.json        # Tokenizer settings
+├── chat_template.jinja          # Saved chat template (when the tokenizer has one)
+├── training_args.bin            # Serialized trainer arguments
+└── checkpoint-*/                 # Intermediate checkpoints if save_steps was reached
 ```
 
-專案**不會**另外輸出合併後的完整模型。推論一律載入基底模型再接上適配器，這也是為什麼 `--model_id` 必須和訓練時一致。檢查點目錄含有相同的適配器檔案，加上 optimizer／scheduler 狀態與 trainer 狀態；`--adapter_path` 可以直接指向其中一個。
+不會另外寫出**合併後的完整模型**。推論總是載入基礎模型並接上 adapter，這就是為什麼 `--model_id` 必須與訓練時使用的相同。檢查點目錄含有相同的 adapter 檔案，外加優化器／排程器狀態與訓練器狀態；`--adapter_path` 可以直接指向其中一個。
 
 ---
 
 ## 建議與最佳實踐
 
-1. **先從小開始。** 正式訓練前先跑 `bash scripts/train_preset.sh smoke-9b`（或 `cpu-smoke`），或手動加上 `--max_seq_length 2048 --num_epochs 1`。
-2. **有效批次大小** 是 `per_device_batch_size × gradient_accum_steps × GPU 數量`，建議 16–32。單卡 `2 × 8 = 16`。
-3. **學習率** — `2e-4` 是穩健的 LoRA 預設；少於 500 筆資料時可降到 `1e-4`。
-4. **監控驗證損失。** 驗證損失上升代表過擬合或學習率過高。啟用評估時，最佳檢查點會自動載回。
-5. **序列長度** 由 `SFTConfig.max_length` 限制。目前 trainer 設定沒有 sequence packing。
-6. **混合精度** — 啟動訊息會印出有效 dtype。不支援 BF16 時會盡量退化到 FP16；CPU 用 FP32。MPS 訓練需要 PyTorch 2.5+（FP16）或 2.6+（BF16）。
-7. **資料品質勝過數量。** 500–1000 筆乾淨資料通常勝過 10,000 筆雜訊資料。
-8. **推論的 `model_id` 要一致**，必須和微調時使用同一個模型。
-9. **明確選擇推論流程** — 人工探索用輸入迴圈；腳本用 `--no_interactive` 搭配明確的 `--prompt`。
-10. **評測題目保持保留**，準備評分候選模型時才拿出來。
-11. **重視事實性時優先使用 `--assistant_only_loss`** 搭配 ChatML 資料，避免模型把問題文字也當成要模仿的回答。
+1. **從小開始。** 在完整訓練前，先執行 4B 煙霧指令或 CPU 煙霧指令。
+2. **有效批次大小**是 `per_device_batch_size × gradient_accum_steps × num_gpus`。目標是 16–32。在單張 GPU 上，`2 × 8 = 16`。
+3. **學習率** — `2e-4` 是穩健的 LoRA 預設值。少於 500 筆範例時，`1e-4` 能降低過擬合風險。
+4. **注意評測損失。** 評測損失上升代表過擬合或學習率太高。啟用評測時，最佳檢查點會自動還原。
+5. **序列長度**受 `SFTConfig.max_length` 限制。目前的訓練器設定沒有序列打包（sequence packing）。
+6. **混合精度** — 啟動日誌會印出有效的 dtype。不支援的 BF16 會在可能的情況下退回 FP16；CPU 使用 FP32。MPS 訓練需要 PyTorch 2.5+ 才支援 FP16、2.6+ 才支援 BF16。
+7. **資料品質勝過數量。** 500–1000 筆乾淨的範例，通常勝過 10,000 筆雜訊多的範例。
+8. **推論時的 `model_id` 要與微調時使用的模型相符。**
+9. **審慎選擇推論流程** — 探索時用互動迴圈，腳本則用 `--no_interactive` 搭配明確的 `--prompt`。
+10. **在準備評分候選者之前，不要把評測提示詞放進訓練。**
+11. **若是講求事實的任務，優先使用 `--assistant_only_loss`** 搭配 ChatML 資料，這樣模型就不會被訓練成把問題文字當成答案。
+12. **生成的訓練資料要驗證兩次** — 用 JSONL 驗證器檢查結構，用官方來源查核事實。
 
 ---
 
 ## 疑難排解
 
-| 問題 | 可能原因 | 解決方式 |
+| 問題 | 可能原因 | 解決方案 |
 |---|---|---|
-| 有 GPU 卻用 CPU 訓練 | 目前的 PyTorch wheel 或驅動無法存取 GPU | 依[安裝並驗證後端](#安裝並驗證後端)重裝，並明確傳入 `--device` |
-| `--device gpu` 或明確指定的 GPU 不可用 | PyTorch 看不到要求的加速器 | 檢查 wheel 與驅動，或改用 `--device cpu` |
-| `OutOfMemoryError` | micro-batch、序列長度或 LoRA 覆蓋範圍太大 | 先降 `--max_seq_length`，再降 `--per_device_batch_size`，最後改用僅注意力 `--target_modules` |
-| `KeyError: 'qwen3'` | Transformers 版本太舊 | 升級至 `transformers>=5.12.1` |
-| CUDA / ROCm 上 NF4 失敗 | bitsandbytes 核心缺失或版本不符 | 讓 bitsandbytes 與 GPU／CUDA／ROCm 版本相符，或用 `--load_in_4bit False` |
-| MPS operator 不支援 | PyTorch 沒有該運算子的 MPS 實作 | 啟動 Python 前設定 `PYTORCH_ENABLE_MPS_FALLBACK=1` |
-| MPS / XPU 使用 `--load_in_4bit True` | 這些後端不支援 4-bit 載入 | 改用 `--load_in_4bit False` |
-| Hub 下載／SSL 錯誤 | conda 或 Windows 上的 `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` 壞掉 | `train.py` 與 `inference.py` 啟動時會修正；否則手動指向 certifi 憑證檔 |
-| 訓練損失出現 NaN | 學習率過高或 dtype 問題 | 降低 `--learning_rate`，或改用 `--torch_dtype bfloat16` |
-| 模型一直重複同一句話 | 過擬合或溫度太低 | 減少 `--num_epochs`，或提高 `--temperature` |
-| `apply_chat_template` 錯誤 | 資料與宣告的格式不符 | 檢查[資料格式](#資料格式)與 `--dataset_path` 的內容 |
-| 本機檔案被當成 Hub 資料集 | `dataset_path` 在本機不存在 | 使用 `./data/train.jsonl`，確認路徑沒有拼錯 |
-| `A valid --prompt is required when using --no_interactive` | `--no_interactive` 一定需要提示詞 | 傳入 `--prompt "..."` 或移除 `--no_interactive` |
-| `--assistant_only_loss requires --dataset_format chat` | 旗標組合無效 | 改用 ChatML 資料，或移除該旗標 |
-| `Row N has no complete assistant target` | 助理回答被長度上限截斷 | 提高 `--max_seq_length` 或縮短該筆範例 |
-| `--eval_each_epoch requires a positive --test_split` | 未設定評估資料 | 設定 `--test_split 0.05`，或移除 `--eval_each_epoch` |
-| `LoRA adapter not found` | `--adapter_path` 路徑錯誤 | 指向輸出目錄或含有 `adapter_config.json` 的 `checkpoint-*` 資料夾 |
-| `The output belongs to a different evaluation run` | 以不同設定重用了結果檔 | 使用新的 `--output` 路徑，或沿用原本的模型／適配器／後端設定 |
-| 從目錄訓練時找不到 `.jsonl` | 目錄掃描只比對 `*.jsonl`，不含 `*.json` | 轉換檔案格式，或直接把檔案路徑傳給 `--dataset_path` |
+| `conda: command not found` | Conda 未在此 shell 中初始化 | 執行 `conda init bash` / `zsh`、重新開啟終端機，或在 Windows 上使用 Anaconda Prompt |
+| `python -m pip: No module named pip` | Python 直譯器選錯了 | 執行 `conda activate ai` 並檢查 `python --version` |
+| 明明有 GPU，訓練卻使用 CPU | PyTorch wheel 或驅動程式無法存取 GPU | 請依照[後端說明](#安裝並驗證後端)重新安裝，並傳入明確的 `--device` |
+| `torch.cuda.is_available()` 在 ROCm 設定後仍為 `False` | 未安裝 AMD wheel 或 ROCm 版本不符 | 先安裝正確的 AMD wheel；`--backend rocm` 只會安裝其餘相依套件 |
+| `--device gpu` 或明確指定的 GPU 不可用 | 要求的加速器對 PyTorch 不可見 | 確認 wheel 與驅動程式，或使用 `--device cpu` |
+| `OutOfMemoryError` | micro-batch、序列長度或 LoRA 涵蓋範圍太大 | 先降低 `--max_seq_length`，再降低 `--per_device_batch_size`，然後改用僅注意力的 `--target_modules` |
+| `KeyError: 'qwen3'` | Transformers 版本太舊 | 升級到 `transformers>=5.12.1` |
+| NF4 在 CUDA 或 ROCm 上失敗 | bitsandbytes kernel 缺失或版本不符 | 讓 bitsandbytes 與 GPU 及 CUDA/ROCm 版本相符；使用 `--load_in_4bit False` |
+| MPS 運算子不受支援 | PyTorch 缺少對應的 MPS kernel | 在啟動 Python 前設定 `PYTORCH_ENABLE_MPS_FALLBACK=1` |
+| 在 MPS 或 XPU 上使用 `--load_in_4bit True` | 那些後端不支援 4-bit 載入 | 使用 `--load_in_4bit False` |
+| Hub 下載／SSL 錯誤 | `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` 設定損壞 | `train.py` 與 `inference.py` 會在啟動時修復這些問題；`certifi` 已宣告在 `requirements-common.txt` 中 |
+| 訓練損失為 NaN | 學習率太高或 dtype 有問題 | 降低 `--learning_rate` 或使用 `--torch_dtype bfloat16` |
+| 模型一直重複同一句話 | 過擬合或溫度太低 | 減少 `--num_epochs` 或提高 `--temperature` |
+| JSONL 驗證器回報錯誤列 | ChatGPT 加了說明文字、程式碼圍欄或錯誤的角色 | 移除 markdown 圍欄，並用提示詞 2 重新產生 |
+| 本機檔案卻從 Hub 載入 | `dataset_path` 在本機不存在 | 請使用 `./data/train.jsonl`，不要用到拼錯的路徑 |
+| `A valid --prompt is required when using --no_interactive` | `--no_interactive` 一律需要提示詞 | 傳入 `--prompt "..."` 或移除 `--no_interactive` |
+| `--assistant_only_loss requires --dataset_format chat` | 旗標組合無效 | 使用 ChatML 資料或移除該旗標 |
+| `Row N has no complete assistant target` | assistant 回答被長度上限截斷 | 提高 `--max_seq_length` 或縮短該筆範例 |
+| `--eval_each_epoch requires a positive --test_split` | 未設定評測資料 | 設定 `--test_split 0.05` 或移除 `--eval_each_epoch` |
+| `LoRA adapter not found` | `--adapter_path` 不正確 | 指向輸出目錄，或含有 `adapter_config.json` 的 `checkpoint-*` 資料夾 |
+| `The output belongs to a different evaluation run` | 重用了不同設定的結果檔案 | 使用新的 `--output` 路徑，或沿用原本的模型／adapter／後端設定 |
+| 從目錄訓練時找不到 `.jsonl` 檔案 | 目錄掃描只比對 `*.jsonl`，不比對 `*.json` | 轉換檔案，或直接把檔案路徑傳給 `--dataset_path` |
 
 ---
 
 ## 授權條款
 
-本專案採 [MIT License](LICENSE) 授權。Qwen3 / Qwen3.5 模型依其在 Hugging Face 上的個別授權條款發布（通常為 Apache 2.0）。
+本專案採用 [MIT License](LICENSE) 授權。Qwen3 / Qwen3.5 模型依其在 Hugging Face 上的各自授權條款發布（上方列出的模型使用 Apache 2.0）。
 
-英文版文件：[README.md](README.md)
+繁體中文文件：[README.zh-Hant.md](README.zh-Hant.md)
