@@ -6,3 +6,4 @@ trl>=1.6.0
 accelerate>=1.13.0
 datasets>=3.0.0
 packaging>=21.0
+certifi>=2023.7.22
